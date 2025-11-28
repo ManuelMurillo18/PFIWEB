@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fil de nouvelles</title>
+
+    <link rel="site.webmanifest" href="manifest.json" />
+    <link rel="icon" href="news-logo.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="css/variables.css">
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/popup.css">
+    <link rel="stylesheet" href="css/postsUI.css">
+</head>
+
+<body>
+    <div id="main">
+        <div id="header">
+            <img src="news-logo-upload.png" class="appLogo" alt="" title="Fil de nouvelles">
+            <span id="viewTitle" class="viewTitle">Fil de nouvelles</span>
+            <div class="iconCmdContainer">
+                <i class="cmdIcon fa fa-check" id="commit" title="Procéder"></i>
+                <i class="cmdIcon fa fa-search" id="showSearch" title="Recherche par mots-clés"></i>
+                <i class="cmdIcon fa fa-plus" id="createPost" title="Ajouter une nouvelle"></i>
+                <i class="cmdIcon fa fa-times" id="abort" title="Annuler"></i>
+                <div id="menu" class="dropdown">
+                    <div data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="cmdIcon fa fa-ellipsis-vertical"></i>
+                    </div>
+                    <div class="dropdown-menu noselect" id="DDMenu" style="width:300px"> </div>
+                </div>
+            </div>
+        </div>
+        <input type="search" id="searchKeys" placeholder="Mots-clés" class="form-control"
+            title="Les mots de 2 caractères et moins sont ignorés" />
+        <div id="content">
+            <div id="postsScrollPanel" class="scrollPanel">
+                <div id="postsPanel" class="itemsPanel">
+                    <div class="post" id="postSample" style="height: 587px;"></div>
+                </div>
+            </div>
+            <div id="form"></div>
+            <div id="errorContainer" class="errorContainer"></div>
+            <div id="aboutContainer" class="aboutContainer">
+                <img src="news-logo.png" alt="" style="width:25%">
+                <h2>Fil de nouvelles</h2>
+                <br> <br>
+                <hr>
+                <p>
+                    Petite application de fil de nouvelles à titre de démonstration
+                    d'interface utilisateur d'application Web monopage réactive basée sur des services Web REST API.
+                </p>
+
+                <hr> <br>
+                <h1>Auteur</h1>
+                <br>
+                <div style="text-align: left;">
+                    <div
+                        style="margin:auto;width:400px;display:grid; grid-template-columns: 130px auto; align-items: center;">
+                        <div
+                            style="background-image: url('Nicolas-Chourot.jpeg');background-size: contain; background-position: center; width: 115px; height: 115px; border-radius: 100px;">
+                        </div>
+                        <div>
+                            <h5> Nicolas Chourot </h5>
+                            <div>Enseignant</div>
+                            <div>Département d'informatique</div>
+                            <div>Collège Lionel-Groulx</div>
+                            <div>automne 2025</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.maskedinput/1.4.1/jquery.maskedinput.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+    <script src="js/posts_API.js"></script>
+    <script src="js/pageManager.js"></script>
+    <script src="js/validation.js"></script>
+    <script src="js/dateUtilities.js"></script>
+    <script src="js/imageControl.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/siteUI.js"></script>
+
+</body>
+
+</html>

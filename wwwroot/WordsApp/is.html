@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta author="Nicolas Chourot">
+    <meta http-equiv="Content-Type" content="text/html; charset= ISO-8859-1">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Weird Dictionary</title>
+    <style>
+        .mainContainer {
+            display: flex;
+            flex-direction: column;
+            max-width: 1220px;
+            margin: auto;
+            background-color: rgb(255, 255, 255);
+            height: 100vh;
+            border: 1px solid lightgray;
+        }
+
+        .header {
+            display: grid;
+            grid-template-columns: repeat(27, auto);
+            align-items: center;
+            padding: 4px;
+        }
+
+        .scrollContainer {
+            margin-top: 0px;
+            overflow-x: hidden;
+            overflow-y: scroll;
+            border-top: 1px solid lightgray;
+            height: inherit;
+        }
+
+        .wordsContainer {
+            margin: auto;
+            margin-left: 8px;
+            max-width: 1600px;
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, 230px);
+        }
+
+        .word {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            height: 23px;
+        }
+
+        .link {
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .link:hover {
+            font-weight: bold;
+        }
+
+        divx {
+            border: 1px solid red;
+        }
+    </style>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+
+</head>
+
+<body>
+    <div class="mainContainer">
+        <div class="header">
+            <div class="letter link">*</div>
+            <div class="letter link">A</div>
+            <div class="letter link">B</div>
+            <div class="letter link">C</div>
+            <div class="letter link">D</div>
+            <div class="letter link">E</div>
+            <div class="letter link">F</div>
+            <div class="letter link">G</div>
+            <div class="letter link">H</div>
+            <div class="letter link">I</div>
+            <div class="letter link">J</div>
+            <div class="letter link">K</div>
+            <div class="letter link">L</div>
+            <div class="letter link">M</div>
+            <div class="letter link">N</div>
+            <div class="letter link">O</div>
+            <div class="letter link">P</div>
+            <div class="letter link">Q</div>
+            <div class="letter link">R</div>
+            <div class="letter link">S</div>
+            <div class="letter link">T</div>
+            <div class="letter link">U</div>
+            <div class="letter link">V</div>
+            <div class="letter link">W</div>
+            <div class="letter link">X</div>
+            <div class="letter link">Y</div>
+            <div class="letter link">Z</div>
+        </div>
+        <div id="content" class="scrollContainer">
+            <div id="words" class="wordsContainer">
+                <!-- Used for items size -->
+                <div id="sample" class="word"></div>
+            </div>
+        </div>
+    </div>
+    <div id='showDefinition'>
+        <div id='definition'></div>
+    </div>
+</body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+<script>
+
+    let limit = 0;
+    let offset = 0;
+    let currentLetter = "";
+    let previousScrollPosition = 0;
+
+    // https://www.w3schools.com/jquery/jquery_dimensions.asp
+    let wordItemLayout = {
+        width: $("#sample").outerWidth(),
+        height: $("#sample").outerHeight()
+    };
+    function setLimit() {
+        let nbColumns = Math.trunc($("#content").innerWidth() / wordItemLayout.width);
+        let nbRows = Math.round($("#content").innerHeight() / wordItemLayout.height);
+        limit = nbRows * nbColumns + nbColumns;
+    }
+    function scrollPosition() {
+        return $("#content").scrollTop();
+    }
+    function storeScrollPosition() {
+        previousScrollPosition = scrollPosition();
+    }
+    function restoreScrollPosition() {
+        $("#content").scrollTop(previousScrollPosition);
+    }
+    $(document).ready(function () {
+        $("#showDefinition").dialog({
+            autoOpen: false,
+            show: { effect: 'fade', speed: 400 },
+            hide: { effect: 'fade', speed: 400 },
+        });
+
+        var resizeTimer = null;
+        var resizeEndTriggerDelai = 300;
+        $(window).on('resize', function (e) {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => { updateContent(false); }, resizeEndTriggerDelai);
+        });
+
+        $('.letter').click(function () {
+            $("#showDefinition").dialog('close');
+            offset = 0;
+            $('.letter').css('color', 'black');
+            $('.letter').css('font-weight', 'normal');
+            $(this).css('color', 'blue');
+            $(this).css('font-weight', 'bold');
+            let selectedLetter = $(this).html();
+            if (selectedLetter == "*")
+                currentLetter = "";
+            else
+                currentLetter = selectedLetter;
+            updateContent(false);
+        })
+
+        updateContent(false);
+    })
+
+    function showDefinition(word, definition) {
+        $('#showDefinition').dialog('option', 'title', word);
+        $('#definition').html(definition);
+        $("#showDefinition").dialog('open');
+    }
+    async function webAPI_GET(queryString) {
+        return new Promise(resolve => {
+            $.ajax({
+                url: "http://localhost:5000/api/words" + queryString,
+                type: 'GET',
+                contentType: 'text/plain',
+                data: {},
+                success: words => { resolve(words) },
+                error: (jqXHR, textStatus, errorThrown) => {
+                    console.log("webAPI_GET_ALL - error", jqXHR.status);
+                    resolve(null);
+                }
+            });
+        })
+    }
+    async function updateContent(append = true) {
+        setLimit();
+        let queryString = append ? `?limit=${limit}&offset=${offset}` : `?limit=${limit * (offset + 1)}&offset=0`;
+        if (currentLetter != "*")
+            queryString += `&Val=${currentLetter}*`;
+        let words = await webAPI_GET(queryString);
+        if (words.length > 0) {
+            $("#content").off(); // must shut off scroll events while updating container content
+            storeScrollPosition();
+            if (!append) $("#words").empty();
+            words.forEach(word => {
+                $('#words').append("<div class='link word' data-placement='bottom' title='" + word.Def + "'>" + word.Val + "</div>");
+            });
+            restoreScrollPosition();
+            $(".word").click(function () {
+                showDefinition($(this).html(), $(this).attr('title'));
+            });
+            $("#content").scroll(function () {
+                if ($("#content").scrollTop() + $("#content").outerHeight() >= $("#words").outerHeight()) {
+                    $("#content").off(); // must shut off scroll events while updating container content
+                    offset++;
+                    updateContent();
+                }
+            });
+        }
+    }
+
+</script>
+
+</html>

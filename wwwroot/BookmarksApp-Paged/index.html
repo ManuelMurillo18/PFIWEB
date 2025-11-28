@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionnaire de favoris</title>
+
+    <link rel="site.webmanifest" href="manifest.json" />
+    <link rel="icon" href="bookmark_logo.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/bookmarksUI.css">
+</head>
+
+<body>
+    <div id="main">
+        <div id="header">
+            <img src="bookmark_logo.png" class="appLogo" alt="" title="Gestionnaire de favoris">
+            <h4 id="actionTitle">Liste des favoris</h4>
+            <i class="cmdIcon fa fa-plus" id="createBookmark" title="Ajouter un favori"></i>
+            <i class="cmdIcon fa fa-times" id="abort" title="Annuler"></i>
+            <div class="dropdown ms-auto" id="categoriesMenu">
+                <div data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="cmdIcon fa fa-ellipsis-vertical"></i>
+                </div>
+                <div class="dropdown-menu noselect" id="DDMenu">
+                    <div class="dropdown-item menuItemLayout" id="aboutCmd">
+                        <i class="menuIcon fa fa-info-circle mx-2"></i> À propos...
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="content">
+            <div id="scrollPanel">
+                <div id="itemsPanel">
+                    <div class="BookmarkRow" id="sample">
+                        <div class="BookmarkContainer noselect">
+                            <div class="BookmarkLayout">
+                                <div class="Bookmark">
+                                    <a href="" target="_blank">sample </a>
+                                    <span class="BookmarkTitle">sample</span>
+                                </div>
+                                <span class="BookmarkCategory">sample Category</span>
+                            </div>
+                            <div class="BookmarkCommandPanel">
+                                <span class="editCmd cmdIcon fa fa-pencil" editBookmarkId="${Bookmark.Id}"
+                                    title="Modifier ${Bookmark.Title}"></span>
+                                <span class="deleteCmd cmdIcon fa fa-trash" deleteBookmarkId="${Bookmark.Id}"
+                                    title="Effacer ${Bookmark.Title}"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="forms">
+                <div id="bookmarkForm"></div>
+                <div id="errorContainer" class="errorContainer"></div>
+                <div id="aboutContainer" class="aboutContainer">
+                    <h2>Gestionnaire de favoris</h2>
+                    <hr>
+                    <p>
+                        Petite application de gestion de favoris à titre de démonstration
+                        d'interface utilisateur monopage réactive.
+                    </p>
+                    <p>
+                        Auteur: Nicolas Chourot
+                    </p>
+                    <p>
+                        Collège Lionel-Groulx, automne 2023
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.maskedinput/1.4.1/jquery.maskedinput.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+    <script src="js/Bookmarks_API.js"></script>
+    <script src="js/pageManager.js"></script>
+    <script src="js/validation.js"></script>
+    <script src="js/appUI.js"></script>
+
+</body>
+
+</html>

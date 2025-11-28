@@ -1,0 +1,20 @@
+[
+    {
+        "Id": 1,
+        "StudentId": "1",
+        "CourseId": "1",
+        "Year":"2024"
+    },
+    {
+        "Id": 2,
+        "StudentId": "1",
+        "CourseId": "2",
+        "Year":"2024"
+    },
+    {
+        "Id": 3,
+        "StudentId": "3",
+        "CourseId": "1",
+        "Year":"2024"
+    }
+]

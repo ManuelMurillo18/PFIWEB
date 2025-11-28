@@ -1,0 +1,26 @@
+{
+  "name": "atelier-1",
+  "version": "1.0.0",
+  "description": "",
+  "main": "http-server.js",
+  "type": "module",
+  "engines": {
+    "node": ">20"
+  },
+  "dependencies": {
+    "date-and-time": "^2.4.1",
+    "decode-uri-component": "^0.4.1",
+    "filter-obj": "^5.1.0",
+    "nodemailer": "^7.0.10",
+    "properties-reader": "^2.1.1",
+    "query-string": "^9.1.0",
+    "split-on-first": "^3.0.0",
+    "uuid": "^8.3.2"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node http-server.js"
+  },
+  "author": "Votre nom",
+  "license": "ISC"
+}

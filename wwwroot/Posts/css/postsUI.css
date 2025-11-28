@@ -1,0 +1,162 @@
+.post {
+    margin: auto;
+    width: 100%;
+    margin-bottom: 20px;
+    /*scroll-snap-align: start;*/
+}
+
+.post:hover .cmdIconSmall {
+    display: block;
+}
+
+.PostdeleteForm {
+    margin: 20px;
+}
+
+.ellipsis {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.post {
+    margin: auto;
+    width: 100%;
+    margin-bottom: 10px;
+
+}
+
+.posts {
+    margin: auto;
+    max-width: 1200px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.postHeader {
+    color: blue;
+    display: grid;
+    grid-template-columns: auto 26px 40px;
+    align-items: center;
+    height: 34px;
+    text-transform: uppercase;
+}
+
+.postTitle {
+    font-size: 26px;
+    font-weight: bold;
+    font-family: 'Times New Roman', Times, serif;
+    line-height: 30px;
+    padding-bottom: 4px;
+}
+
+.postImage {
+    width: 100%;
+}
+
+.UserAvatarXSmall {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    width: 46px;
+    height: 46px;
+    border-radius: 30px;
+    color: black;
+    border: 2px solid white;
+    cursor: pointer;
+}
+
+.ownerLayout {
+    display: grid;
+    grid-template-columns: 50px auto;
+    align-items: center;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.postDate {
+    margin-top: 4px;
+    font-size: 10px;
+    margin-bottom: 20px;
+    color: gray;
+    text-align: right;
+}
+
+.postOwnerAndDate {
+    margin-top: 4px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-bottom: 10px;
+}
+
+.postText {
+    text-align: justify;
+    overflow-y: hidden;
+    font-size: 17px;
+    font-family: 'Times New Roman', Times, serif;
+    line-height: 21px;
+}
+
+.postTextContainer {
+    height: 66px;
+}
+
+.postfooter {
+    text-align: center;
+    font-size: 12px;
+    color: blue;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-bottom: 1px solid lightgray !important;
+}
+
+.hideExtra {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.showExtra {
+    height: auto;
+}
+
+.imageUploaderContainer {
+    border: 1px solid #ccc;
+    border-radius: var(--borderRadius);
+}
+
+.commentsPanel {
+    border-radius: 5px;
+    margin-top: 10px;
+    border: 1px solid #ccc;
+    padding:4px;
+    background-color: antiquewhite;
+    display:none;
+}
+
+.commentsHeader {
+    display:grid;
+    grid-template-columns: auto 30px;
+    align-items: center;
+}
+
+.commentEditor{
+    display:none;
+}
+
+.lessText {
+    display:none;
+}
+
+.commentEditorLayout {
+    padding: 4px;
+    display:flex;
+    gap:8px;
+}
+
+.comments {
+    max-height: 500px;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}

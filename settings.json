@@ -1,0 +1,8 @@
+{
+    "appService.zipIgnorePattern": [
+        "node_modules{,/**}",
+        ".vscode{,/**}"
+    ],
+    "appService.defaultWebAppToDeploy": "/subscriptions/b882794d-b94d-47d9-9009-07168f941662/resourceGroups/KBG-RG/providers/Microsoft.Web/sites/Atelier-1",
+    "appService.deploySubpath": "."
+}

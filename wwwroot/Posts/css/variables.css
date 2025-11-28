@@ -1,0 +1,6 @@
+:root {
+    --borderRadius: 6px;
+    --borderColor: #ccc;
+    --panelPadding: 8px;
+    --gap : 8px;
+}

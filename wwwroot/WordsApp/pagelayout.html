@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        * {
+            overflow: hidden;
+            padding: 0px;
+            margin: 0px;
+        }
+
+
+        #main {
+            padding: 8px;
+            margin: auto;
+            max-width: 1200px;
+            background-color: rgb(225, 225, 225);
+            border: 1px solid green;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            gap: 8px;
+        }
+
+        #header {
+            height: 40px;
+            align-items: center;
+            padding: 4px;
+            border: 1px solid blue;
+        }
+
+        #content {
+            border: 1px solid black;
+            flex: 1;
+        }
+
+        #scrollPanel {
+            border: 1px solid orangered;
+            height: 100%;
+            overflow-x: hidden;
+            overflow-y: scroll;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-gutter: stable;
+            scroll-snap-type: y mandatory;
+        }
+
+        #items {
+            border: 1px solid rgb(255, 234, 0);
+            height: 3000px;
+        }
+
+        #footer {
+            height: 40px;
+            border: 1px solid rgb(0, 255, 238);
+        }
+
+        divx {
+            border: 1px solid red;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main">
+        <div id="header">
+            <h1>Header</h1>
+        </div>
+        <div id="content">
+            <div id="scrollPanel">
+                <div id="items"></div>
+            </div>
+        </div>
+        <div id="footer">
+            <h1>footer</h1>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,45 @@
+.word {
+    font-size: large;
+    font-weight: bold;
+    width:100%;
+}
+
+.wordContainer {
+    height: 28px;
+    padding-left: 10px;
+}
+
+.wordsContainer {
+    margin: auto;
+    margin-left: 8px;
+    width: 100%;
+    max-width: 1600px;
+}
+
+#searchKey {
+    margin:0px !important;
+    padding-left:5px;
+    padding-bottom:5px;
+    padding-right: 10px;
+    height: 32px !important;
+    vertical-align: middle;
+}
+#abort {
+    margin-left:160px;
+}
+#search {
+    display:grid;
+    width: 190px;
+    grid-template-columns: 155px 30px;
+    align-items: center;
+}
+
+.wordRowX { 
+    /* très couteux et peu causer des arrêts momentanés du défilement 
+      renommer à .wordRow pour l'activer */
+    scroll-snap-align: start;
+}
+
+hr {
+    margin:0px;
+}
