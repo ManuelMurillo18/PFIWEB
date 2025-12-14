@@ -21,7 +21,26 @@ let keywordsOnchangeTimger = null;
 Init_UI();
 async function Init_UI() {
     postsPanel = new PageManager('postsScrollPanel', 'postsPanel', 'postSample', renderPosts);
+
+    // Check if user is logged in on page load
+    if (Accounts_API.isLoggedIn()) {
+        let user = Accounts_API.getLoggedUser();
+        updateMenuForUser(user);
+        initTimeout(600, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
+    } else {
+        updateMenuForAnonymous();
+    }
+
     $('#createPost').on("click", async function () {
+        if (!Accounts_API.isLoggedIn()) {
+            renderLoginForm();
+            return;
+        }
+        let user = Accounts_API.getLoggedUser();
+        if (!canCreatePost(user)) {
+            popupMessage("Vous n'avez pas les droits pour créer des nouvelles.");
+            return;
+        }
         showCreatePostForm();
     });
     $('#abort').on("click", async function () {
@@ -49,6 +68,49 @@ async function Init_UI() {
 
         return elementBottom > viewportTop && elementTop < viewportBottom;
     };
+}
+
+/////////////////////////// User permissions ////////////////////////////////////////////////////////////
+
+function canCreatePost(user) {
+    if (!user) return false;
+    return user.Authorizations.writeAccess >= 1 || user.isSuper;
+}
+
+function canEditPost(user, post) {
+    if (!user) return false;
+    if (user.isAdmin) return false; // Admins can only manage users
+    return post.OwnerId === user.Id;
+}
+
+function canDeletePost(user, post) {
+    if (!user) return false;
+    if (user.isAdmin) return true; // Admins can delete any post
+    return post.OwnerId === user.Id;
+}
+
+function canLikePost(user) {
+    return user != null && !user.isBlocked;
+}
+
+function canManageUsers(user) {
+    return user != null && user.isAdmin;
+}
+
+/////////////////////////// Menu management ////////////////////////////////////////////////////////////
+
+function updateMenuForAnonymous() {
+    $('#createPost').hide();
+    updateDropDownMenu();
+}
+
+function updateMenuForUser(user) {
+    if (canCreatePost(user)) {
+        $('#createPost').show();
+    } else {
+        $('#createPost').hide();
+    }
+    updateDropDownMenu();
 }
 
 /////////////////////////// Search keywords UI //////////////////////////////////////////////////////////
@@ -109,7 +171,13 @@ function intialView() {
     $('#form').empty();
     $('#aboutContainer').hide();
     $('#errorContainer').hide();
-    $("#createPost").show();
+
+    let user = Accounts_API.getLoggedUser();
+    if (user && canCreatePost(user)) {
+        $("#createPost").show();
+    } else {
+        $("#createPost").hide();
+    }
 
     showSearchIcon();
 }
@@ -232,29 +300,142 @@ async function renderPosts(container, queryString) {
     removeWaitingGif();
     return endOfData;
 }
+
 function renderPost(post) {
     let date = convertToFrenchDate(UTC_To_Local(post.Date));
+    let user = Accounts_API.getLoggedUser();
+
+    let editButton = '';
+    let deleteButton = '';
+
+    if (user && canEditPost(user, post)) {
+        editButton = `<span class="editCmd cmdIconSmall fa fa-pencil" postId="${post.Id}" title="Modifier nouvelle"></span>`;
+    }
+    if (user && canDeletePost(user, post)) {
+        deleteButton = `<span class="deleteCmd cmdIconSmall fa fa-trash" postId="${post.Id}" title="Effacer nouvelle"></span>`;
+    }
+
+    let ownerInfo = '';
+    if (post.OwnerName && post.OwnerAvatar) {
+        ownerInfo = `
+            <div class="postOwner">
+                <img src="${post.OwnerAvatar}" class="ownerAvatar" alt="${post.OwnerName}">
+                <span class="ownerName">${post.OwnerName}</span>
+            </div>`;
+    }
+
+    let likesHtml = renderLikes(post, user);
+
     return $(`
         <div class="post" id="${post.Id}" etag="${currentETag}">
             <div class="postHeader">
                 ${post.Category}
-                <span class="editCmd cmdIconSmall fa fa-pencil" postId="${post.Id}" title="Modifier nouvelle"></span>
-                <span class="deleteCmd cmdIconSmall fa fa-trash" postId="${post.Id}" title="Effacer nouvelle"></span>
+                ${editButton}
+                ${deleteButton}
             </div>
+            ${ownerInfo}
             <div class="postTitle"> ${post.Title} </div>
             <img class="postImage" src='${post.Image}'/>
             <div class="postDate"> ${date} </div>
             <div postId="${post.Id}" class="postTextContainer hideExtra">
                 <div class="postText" >${post.Text}</div>
             </div>
-           
+            ${likesHtml}
             <div class="postfooter">
                 <span postId="${post.Id}" class="moreText cmdIconXSmall fa fa-angle-double-down" title="Afficher la suite"></span>
                 <span postId="${post.Id}" class="lessText cmdIconXSmall fa fa-angle-double-up" title="Réduire..."></span>
-            </div>         
+            </div>
         </div>
     `);
 }
+
+function renderLikes(post, user) {
+    // Don't show likes UI if user is not logged in
+    if (!user) {
+        return '';
+    }
+
+    let likesCount = post.Likes ? post.Likes.length : 0;
+    let userLiked = false;
+    let likesNames = [];
+
+    if (post.Likes && post.Likes.length > 0) {
+        likesNames = post.Likes.map(like => like.Name);
+        if (user) {
+            userLiked = post.Likes.some(like => like.Name === user.Name);
+        }
+    }
+
+    let likeIcon = userLiked ? 'fa-solid fa-thumbs-up liked' : 'fa-regular fa-thumbs-up';
+    let likeAction = canLikePost(user) ? (userLiked ? 'unlikeCmd' : 'likeCmd') : '';
+    let likeTitle = userLiked ? 'Retirer votre like' : 'Ajouter un like';
+    let likesNamesText = likesNames.join(', ');
+
+    return `
+        <div class="likesContainer" postId="${post.Id}">
+            <span class="${likeAction} likeIcon ${likeIcon}" postId="${post.Id}" title="${likeTitle}"></span>
+            <span class="likesCount" title="${likesNamesText}">${likesCount}</span>
+        </div>
+    `;
+}
+
+async function updateLikesUI(postId) {
+    let response = await Posts_API.Get(postId);
+    if (!Posts_API.error && response.data) {
+        let post = response.data;
+        let user = Accounts_API.getLoggedUser();
+        let likesHtml = renderLikes(post, user);
+        $(`.likesContainer[postId="${postId}"]`).replaceWith(likesHtml);
+        attachLikesEvents();
+    }
+}
+
+function attachLikesEvents() {
+    $(".likeCmd").off();
+    $(".likeCmd").on("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        timeout();
+        let postId = $(this).attr("postId");
+        let user = Accounts_API.getLoggedUser();
+
+        if (!user) {
+            renderLoginForm();
+            return false;
+        }
+
+        let result = await PostLikes_API.addLike(postId, user.Id);
+        if (result) {
+            await updateLikesUI(postId);
+        } else {
+            popupMessage("Erreur lors de l'ajout du like");
+        }
+        return false;
+    });
+
+    $(".unlikeCmd").off();
+    $(".unlikeCmd").on("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        timeout();
+        let postId = $(this).attr("postId");
+        let user = Accounts_API.getLoggedUser();
+
+        if (!user) {
+            renderLoginForm();
+            return false;
+        }
+
+        let result = await PostLikes_API.removeLike(postId, user.Id);
+        if (result) {
+            await updateLikesUI(postId);
+        } else {
+            popupMessage("Erreur lors du retrait du like");
+        }
+        return false;
+    });
+}
+
 async function compileCategories() {
     categories = [];
     let response = await Posts_API.GetQuery("?fields=category&sort=category");
@@ -271,11 +452,59 @@ async function compileCategories() {
         }
     }
 }
+
 function updateDropDownMenu() {
     let DDMenu = $("#DDMenu");
-    let selectClass = selectedCategory === "" ? "fa-check" : "fa-fw";
+    let user = Accounts_API.getLoggedUser();
     DDMenu.empty();
 
+    // User section for logged in users
+    if (user) {
+        DDMenu.append($(`
+            <div class="dropdown-item menuItemLayout userHeader">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${user.Avatar}" class="menuUserAvatar" alt="${user.Name}">
+                    <span>${user.Name}</span>
+                </div>
+            </div>
+        `));
+        DDMenu.append($(`<div class="dropdown-divider"></div>`));
+
+        // User management for admins
+        if (canManageUsers(user)) {
+            DDMenu.append($(`
+                <div class="dropdown-item menuItemLayout" id="manageUsersCmd">
+                    <i class="menuIcon fa fa-users mx-2"></i> Gestion des usagers
+                </div>
+            `));
+        }
+
+        // Profile modification
+        DDMenu.append($(`
+            <div class="dropdown-item menuItemLayout" id="modifyProfileCmd">
+                <i class="menuIcon fa fa-user-edit mx-2"></i> Modifier votre profil
+            </div>
+        `));
+
+        // Logout
+        DDMenu.append($(`
+            <div class="dropdown-item menuItemLayout" id="logoutCmd">
+                <i class="menuIcon fa fa-sign-out-alt mx-2"></i> Déconnexion
+            </div>
+        `));
+        DDMenu.append($(`<div class="dropdown-divider"></div>`));
+    } else {
+        // Login option for anonymous users
+        DDMenu.append($(`
+            <div class="dropdown-item menuItemLayout" id="loginCmd">
+                <i class="menuIcon fa fa-sign-in-alt mx-2"></i> Connexion
+            </div>
+        `));
+        DDMenu.append($(`<div class="dropdown-divider"></div>`));
+    }
+
+    // Categories section
+    let selectClass = selectedCategory === "" ? "fa-check" : "fa-fw";
     DDMenu.append($(`
         <div class="dropdown-item menuItemLayout" id="allCatCmd">
             <i class="menuIcon fa ${selectClass} mx-2"></i> Toutes les catégories
@@ -293,13 +522,11 @@ function updateDropDownMenu() {
     DDMenu.append($(`<div class="dropdown-divider"></div> `));
     DDMenu.append($(`
         <div class="dropdown-item menuItemLayout" id="aboutCmd">
-            <!--<div style="display:grid; grid-template-columns:70px auto;  align-items: center;">
-                <img src="news-logo-upload.png" class="appLogo" alt="" title="Fil de nouvelles">
-                <span>À propos...</span>
-            </div>-->
             <i class="menuIcon fa fa-info-circle mx-2"></i> À propos...
         </div>
         `));
+
+    // Attach events
     $('#aboutCmd').on("click", function () {
         showAbout();
     });
@@ -313,7 +540,29 @@ function updateDropDownMenu() {
         await showPosts(true);
         updateDropDownMenu();
     });
+
+    if (user) {
+        $('#logoutCmd').on("click", async function () {
+            await Accounts_API.logout(user.Id);
+            noTimeout();
+            updateMenuForAnonymous();
+            await showPosts(true);
+        });
+        $('#modifyProfileCmd').on("click", function () {
+            renderModifyProfileForm();
+        });
+        if (canManageUsers(user)) {
+            $('#manageUsersCmd').on("click", function () {
+                renderUserManagementForm();
+            });
+        }
+    } else {
+        $('#loginCmd').on("click", function () {
+            renderLoginForm();
+        });
+    }
 }
+
 function attach_Posts_UI_Events_Callback() {
 
     linefeeds_to_Html_br(".postText");
@@ -321,15 +570,16 @@ function attach_Posts_UI_Events_Callback() {
     // attach icon command click event callback
     $(".editCmd").off();
     $(".editCmd").on("click", function () {
+        timeout();
         showEditPostForm($(this).attr("postId"));
     });
     $(".deleteCmd").off();
     $(".deleteCmd").on("click", function () {
+        timeout();
         showDeletePostForm($(this).attr("postId"));
     });
     $(".moreText").off();
     $(".moreText").click(function () {
-        //$(`.commentsPanel[postId=${$(this).attr("postId")}]`).show();
         $(`.lessText[postId=${$(this).attr("postId")}]`).show();
         $(this).hide();
         $(`.postTextContainer[postId=${$(this).attr("postId")}]`).addClass('showExtra');
@@ -337,14 +587,16 @@ function attach_Posts_UI_Events_Callback() {
     })
     $(".lessText").off();
     $(".lessText").click(function () {
-        //$(`.commentsPanel[postId=${$(this).attr("postId")}]`).hide();
         $(`.moreText[postId=${$(this).attr("postId")}]`).show();
         $(this).hide();
         postsPanel.scrollToElem($(this).attr("postId"));
         $(`.postTextContainer[postId=${$(this).attr("postId")}]`).addClass('hideExtra');
         $(`.postTextContainer[postId=${$(this).attr("postId")}]`).removeClass('showExtra');
     })
+
+    attachLikesEvents();
 }
+
 function addWaitingGif() {
     clearTimeout(waiting);
     waiting = setTimeout(() => {
@@ -404,7 +656,572 @@ function highlightKeywords() {
     }
 }
 
-//////////////////////// Forms rendering /////////////////////////////////////////////////////////////////
+//////////////////////// Authentication Forms /////////////////////////////////////////////////////////////////
+
+function renderLoginForm(message = "") {
+    timeout();
+    hidePosts();
+    $("#viewTitle").text("Connexion");
+    $('#commit').hide();
+    $('#abort').show();
+    $("#form").show();
+    $("#form").empty();
+
+    let errorMessage = message ? `<div class="errorMessage">${message}</div>` : '';
+
+    $("#form").append(`
+        <div class="loginForm">
+            <h3>Connexion</h3>
+            ${errorMessage}
+            <form id="loginFormElement">
+                <input type="email" id="loginEmail" class="form-control" placeholder="Courriel" required>
+                <div id="emailError" class="errorField"></div>
+
+                <input type="password" id="loginPassword" class="form-control" placeholder="Mot de passe" required>
+                <div id="passwordError" class="errorField"></div>
+
+                <button type="submit" class="btn btn-primary">Entrer</button>
+                <button type="button" id="registerBtn" class="btn btn-info">Nouveau compte</button>
+            </form>
+        </div>
+    `);
+
+    $('#loginFormElement').on("submit", async function (event) {
+        event.preventDefault();
+        $('#emailError').text('');
+        $('#passwordError').text('');
+
+        let email = $('#loginEmail').val();
+        let password = $('#loginPassword').val();
+
+        let result = await Accounts_API.login(email, password);
+
+        if (result && result.Access_token) {
+            Accounts_API.setBearerToken(result.Access_token);
+            Accounts_API.setLoggedUser(result.User);
+
+            if (result.User.VerifyCode !== "verified") {
+                renderVerifyEmailForm(result.User);
+            } else {
+                updateMenuForUser(result.User);
+                initTimeout(600, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
+                await showPosts(true);
+            }
+        } else {
+            if (Accounts_API.currentStatus === 481) {
+                $('#emailError').text('Courriel d\'utilisateur introuvable');
+            } else if (Accounts_API.currentStatus === 482) {
+                $('#passwordError').text('Mot de passe incorrecte');
+            } else if (Accounts_API.currentStatus === 481) {
+                renderLoginForm('Compte bloqué par l\'administrateur');
+            } else if (Accounts_API.currentStatus === 0) {
+                renderLoginForm('Le serveur ne répond pas');
+            } else {
+                renderLoginForm(Accounts_API.currentHttpError);
+            }
+        }
+    });
+
+    $('#registerBtn').on("click", function () {
+        renderRegisterForm();
+    });
+}
+
+function renderRegisterForm() {
+    timeout();
+    hidePosts();
+    $("#viewTitle").text("Inscription");
+    $('#commit').hide();
+    $('#abort').show();
+    $("#form").show();
+    $("#form").empty();
+
+    $("#form").append(`
+        <div class="registerForm">
+            <h3>Inscription</h3>
+            <form id="registerFormElement">
+                <label>Adresse de courriel</label>
+                <input type="email" id="registerEmail" class="form-control Email"
+                    placeholder="Courriel" required
+                    RequireMessage="Veuillez entrer votre courriel"
+                    InvalidMessage="Veuillez entrer un courriel valide"
+                    CustomErrorMessage="Ce courriel est déjà utilisé">
+
+                <input type="email" id="registerEmailVerify" class="form-control MatchedInput"
+                    matchedInputId="registerEmail"
+                    placeholder="Vérification" required
+                    RequireMessage="Veuillez entrer votre courriel"
+                    InvalidMessage="Les courriels ne correspondent pas">
+
+                <label>Mot de passe</label>
+                <input type="password" id="registerPassword" class="form-control"
+                    placeholder="Mot de passe" required
+                    RequireMessage="Veuillez entrer un mot de passe"
+                    InvalidMessage="Le mot de passe doit contenir au moins 6 caractères">
+
+                <input type="password" id="registerPasswordVerify" class="form-control MatchedInput"
+                    matchedInputId="registerPassword"
+                    placeholder="Vérification" required
+                    RequireMessage="Veuillez entrer votre mot de passe"
+                    InvalidMessage="Les mots de passe ne correspondent pas">
+
+                <label>Nom</label>
+                <input type="text" id="registerName" class="form-control"
+                    placeholder="Nom" required>
+
+                <label>Avatar</label>
+                <div class='imageUploader'
+                     newImage='true'
+                     controlId='registerAvatar'
+                     imageSrc='news-logo-upload.png'
+                     waitingImage="Loading_icon.gif">
+                </div>
+
+                <button type="submit" id="registerSubmitBtn" class="btn btn-primary">Enregistrer</button>
+                <button type="button" id="cancelRegisterBtn" class="btn btn-secondary">Annuler</button>
+            </form>
+        </div>
+    `);
+
+    initImageUploaders();
+    initFormValidation();
+    addConflictValidation(Accounts_API.serverHost() + "/accounts/conflict", "registerEmail", "registerSubmitBtn");
+
+    $('#registerFormElement').on("submit", async function (event) {
+        event.preventDefault();
+
+        let userData = {
+            Email: $('#registerEmail').val(),
+            Password: $('#registerPassword').val(),
+            Name: $('#registerName').val(),
+            Avatar: $('#registerAvatar').val()
+        };
+
+        let result = await Accounts_API.register(userData);
+
+        if (result) {
+            popupMessage("Votre compte a été créé. Veuillez prendre vos courriels pour récupérer votre code de vérification qui vous sera demandé lors de votre prochaine connexion.");
+            renderLoginForm();
+        } else {
+            popupMessage("Erreur lors de la création du compte: " + Accounts_API.currentHttpError);
+        }
+    });
+
+    $('#cancelRegisterBtn').on("click", function () {
+        renderLoginForm();
+    });
+}
+
+function renderVerifyEmailForm(user) {
+    timeout();
+    hidePosts();
+    $("#viewTitle").text("Vérification");
+    $('#commit').hide();
+    $('#abort').show();
+    $("#form").show();
+    $("#form").empty();
+
+    $("#form").append(`
+        <div class="verifyForm">
+            <h3>Veuillez entrer le code de vérification de que vous avez reçu par courriel</h3>
+            <form id="verifyFormElement">
+                <input type="text" id="verifyCode" class="form-control"
+                    placeholder="Code de vérification de courriel" required>
+
+                <button type="submit" class="btn btn-primary">Vérifier</button>
+            </form>
+        </div>
+    `);
+
+    $('#verifyFormElement').on("submit", async function (event) {
+        event.preventDefault();
+
+        let code = $('#verifyCode').val();
+        let result = await Accounts_API.verify(user.Id, code);
+
+        if (result) {
+            user.VerifyCode = "verified";
+            Accounts_API.setLoggedUser(user);
+            updateMenuForUser(user);
+            initTimeout(600, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
+            await showPosts(true);
+        } else {
+            popupMessage("Code de vérification invalide");
+        }
+    });
+}
+
+function renderModifyProfileForm() {
+    timeout();
+    hidePosts();
+    $("#viewTitle").text("Modification");
+    $('#commit').hide();
+    $('#abort').show();
+    $("#form").show();
+    $("#form").empty();
+
+    let user = Accounts_API.getLoggedUser();
+
+    $("#form").append(`
+        <div class="modifyProfileForm">
+            <h3>Modification</h3>
+            <form id="modifyProfileFormElement">
+                <input type="hidden" id="userId" value="${user.Id}">
+
+                <label>Adresse de courriel</label>
+                <input type="email" id="modifyEmail" class="form-control Email"
+                    value="${user.Email}" required>
+
+                <input type="email" id="modifyEmailVerify" class="form-control MatchedInput"
+                    matchedInputId="modifyEmail"
+                    value="${user.Email}"
+                    placeholder="Vérification" required>
+
+                <label>Mot de passe</label>
+                <input type="password" id="modifyPassword" class="form-control"
+                    placeholder="Mot de passe">
+
+                <input type="password" id="modifyPasswordVerify" class="form-control MatchedInput"
+                    matchedInputId="modifyPassword"
+                    placeholder="Vérification">
+
+                <label>Nom</label>
+                <input type="text" id="modifyName" class="form-control"
+                    value="${user.Name}" required>
+
+                <label>Avatar</label>
+                <div class='imageUploader'
+                     newImage='false'
+                     controlId='modifyAvatar'
+                     imageSrc='${user.Avatar}'
+                     waitingImage="Loading_icon.gif">
+                </div>
+
+                <button type="submit" class="btn btn-primary">Enregistrer</button>
+                <button type="button" id="deleteAccountBtn" class="btn btn-warning">Effacer le compte</button>
+                <button type="button" id="cancelModifyBtn" class="btn btn-secondary">Annuler</button>
+            </form>
+        </div>
+    `);
+
+    initImageUploaders();
+    initFormValidation();
+
+    $('#modifyProfileFormElement').on("submit", async function (event) {
+        event.preventDefault();
+
+        let userData = {
+            Id: user.Id,
+            Email: $('#modifyEmail').val(),
+            Name: $('#modifyName').val(),
+            Avatar: $('#modifyAvatar').val()
+        };
+
+        let password = $('#modifyPassword').val();
+        if (password) {
+            userData.Password = password;
+        }
+
+        let emailChanged = userData.Email !== user.Email;
+
+        let result = await Accounts_API.modify(userData);
+
+        if (result) {
+            if (emailChanged) {
+                popupMessage("Votre profil a été modifié. Veuillez vérifier votre nouveau courriel.");
+                Accounts_API.setLoggedUser(result);
+                renderVerifyEmailForm(result);
+            } else {
+                Accounts_API.setLoggedUser(result);
+                updateMenuForUser(result);
+                await showPosts(true);
+            }
+        } else {
+            popupMessage("Erreur lors de la modification: " + Accounts_API.currentHttpError);
+        }
+    });
+
+    $('#deleteAccountBtn').on("click", function () {
+        renderDeleteAccountConfirm(user);
+    });
+
+    $('#cancelModifyBtn').on("click", async function () {
+        await showPosts();
+    });
+}
+
+function renderDeleteAccountConfirm(user) {
+    timeout();
+    $("#form").empty();
+
+    $("#form").append(`
+        <div class="deleteAccountConfirm">
+            <h3>Voulez-vous vraiment effacer votre compte?</h3>
+            <p>Cette action est irréversible. Toutes vos nouvelles et likes seront effacés.</p>
+            <button id="confirmDeleteBtn" class="btn btn-danger">Effacer mon compte</button>
+            <button id="cancelDeleteBtn" class="btn btn-secondary">Annuler</button>
+        </div>
+    `);
+
+    $('#confirmDeleteBtn').on("click", async function () {
+        let result = await Accounts_API.remove(user.Id);
+        if (result) {
+            noTimeout();
+            updateMenuForAnonymous();
+            await showPosts(true);
+        } else {
+            popupMessage("Erreur lors de la suppression du compte");
+        }
+    });
+
+    $('#cancelDeleteBtn').on("click", function () {
+        renderModifyProfileForm();
+    });
+}
+
+async function renderUserManagementForm() {
+    timeout();
+    hidePosts();
+    $("#viewTitle").text("Gestion des usagers");
+    $('#commit').hide();
+    $('#abort').show();
+    $("#form").show();
+    $("#form").empty();
+
+    // Fetch all users
+    let response = await fetch(Accounts_API.serverHost() + "/api/accounts", {
+        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
+    });
+
+    if (!response.ok) {
+        popupMessage("Erreur lors du chargement des usagers");
+        return;
+    }
+
+    let users = await response.json();
+
+    $("#form").append(`
+        <div class="userManagementForm">
+            <h3>Gestion des usagers</h3>
+            <div id="usersList"></div>
+        </div>
+    `);
+
+    // Render each user
+    users.forEach(user => {
+        $("#usersList").append(renderUserManagementRow(user));
+    });
+
+    // Attach events
+    attachUserManagementEvents();
+}
+
+function renderUserManagementRow(user) {
+    let userTypeLabel = '';
+    let userTypeClass = '';
+
+    if (user.isAdmin) {
+        userTypeLabel = 'Administrateur';
+        userTypeClass = 'badge-danger';
+    } else if (user.isSuper) {
+        userTypeLabel = 'Super Usager';
+        userTypeClass = 'badge-warning';
+    } else {
+        userTypeLabel = 'Usager de base';
+        userTypeClass = 'badge-info';
+    }
+
+    let blockLabel = user.isBlocked ? 'Débloquer' : 'Bloquer';
+    let blockIcon = user.isBlocked ? 'fa-unlock' : 'fa-lock';
+    let blockedBadge = user.isBlocked ? '<span class="badge badge-secondary">Bloqué</span>' : '';
+
+    return `
+        <div class="userRow" userId="${user.Id}">
+            <div class="userInfo">
+                <img src="${user.Avatar}" class="userRowAvatar" alt="${user.Name}">
+                <div class="userDetails">
+                    <div class="userName">${user.Name}</div>
+                    <div class="userEmail">${user.Email}</div>
+                    <span class="badge ${userTypeClass}">${userTypeLabel}</span>
+                    ${blockedBadge}
+                </div>
+            </div>
+            <div class="userActions">
+                <button class="btn btn-sm btn-primary changePermissionBtn" userId="${user.Id}" title="Changer les permissions">
+                    <i class="fa fa-user-gear"></i> Permissions
+                </button>
+                <button class="btn btn-sm btn-warning blockUserBtn" userId="${user.Id}" title="${blockLabel}">
+                    <i class="fa ${blockIcon}"></i> ${blockLabel}
+                </button>
+                <button class="btn btn-sm btn-danger deleteUserBtn" userId="${user.Id}" title="Effacer">
+                    <i class="fa fa-trash"></i> Effacer
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function attachUserManagementEvents() {
+    $('.changePermissionBtn').off();
+    $('.changePermissionBtn').on("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        let userId = $(this).attr("userId");
+        await changeUserPermissions(userId);
+        return false;
+    });
+
+    $('.blockUserBtn').off();
+    $('.blockUserBtn').on("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        let userId = $(this).attr("userId");
+        await toggleBlockUser(userId);
+        return false;
+    });
+
+    $('.deleteUserBtn').off();
+    $('.deleteUserBtn').on("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        let userId = $(this).attr("userId");
+        await confirmDeleteUser(userId);
+        return false;
+    });
+}
+
+async function changeUserPermissions(userId) {
+    timeout();
+
+    // Fetch current user data
+    let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
+        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
+    });
+
+    if (!response.ok) {
+        popupMessage("Erreur lors du chargement de l'usager");
+        return;
+    }
+
+    let user = await response.json();
+
+    // Use the promote endpoint to cycle permissions
+    let promoteResponse = await fetch(Accounts_API.serverHost() + "/accounts/promote", {
+        method: "POST",
+        headers: {
+            "Authorization": "Bearer " + sessionStorage.getItem("bearerToken"),
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ Id: user.Id })
+    });
+
+    if (promoteResponse.ok) {
+        // Get updated user data
+        let updatedUser = await promoteResponse.json();
+
+        // Partial refresh: only update this user's row
+        let userRowHtml = renderUserManagementRow(updatedUser);
+        $(`.userRow[userId="${userId}"]`).replaceWith(userRowHtml);
+
+        // Re-attach events to the new row
+        attachUserManagementEvents();
+    } else {
+        popupMessage("Erreur lors de la modification des permissions");
+    }
+}
+
+async function toggleBlockUser(userId) {
+    timeout();
+
+    // Fetch current user data
+    let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
+        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
+    });
+
+    if (!response.ok) {
+        popupMessage("Erreur lors du chargement de l'usager");
+        return;
+    }
+
+    let user = await response.json();
+
+    // Use the toggleblock endpoint
+    let toggleResponse = await fetch(Accounts_API.serverHost() + "/accounts/toggleblock", {
+        method: "POST",
+        headers: {
+            "Authorization": "Bearer " + sessionStorage.getItem("bearerToken"),
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ Id: user.Id })
+    });
+
+    if (toggleResponse.ok) {
+        // Get updated user data
+        let updatedUser = await toggleResponse.json();
+
+        // Partial refresh: only update this user's row
+        let userRowHtml = renderUserManagementRow(updatedUser);
+        $(`.userRow[userId="${userId}"]`).replaceWith(userRowHtml);
+
+        // Re-attach events to the new row
+        attachUserManagementEvents();
+    } else {
+        popupMessage("Erreur lors du blocage/déblocage");
+    }
+}
+
+async function confirmDeleteUser(userId) {
+    // Fetch user data for confirmation
+    let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
+        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
+    });
+
+    if (!response.ok) {
+        popupMessage("Erreur lors du chargement de l'usager");
+        return;
+    }
+
+    let user = await response.json();
+
+    timeout();
+    $("#form").empty();
+
+    $("#form").append(`
+        <div class="deleteUserConfirm">
+            <h3>Confirmer la suppression</h3>
+            <div class="userToDelete">
+                <img src="${user.Avatar}" class="userRowAvatar" alt="${user.Name}">
+                <div>
+                    <div class="userName">${user.Name}</div>
+                    <div class="userEmail">${user.Email}</div>
+                </div>
+            </div>
+            <p>Voulez-vous vraiment effacer cet usager?</p>
+            <p class="text-danger">Toutes ses nouvelles et likes seront également effacés.</p>
+            <button id="confirmDeleteUserBtn" class="btn btn-danger">Effacer l'usager</button>
+            <button id="cancelDeleteUserBtn" class="btn btn-secondary">Annuler</button>
+        </div>
+    `);
+
+    $('#confirmDeleteUserBtn').on("click", async function () {
+        let deleteResponse = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
+            method: "DELETE",
+            headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
+        });
+
+        if (deleteResponse.ok) {
+            await renderUserManagementForm();
+        } else {
+            popupMessage("Erreur lors de la suppression de l'usager");
+        }
+    });
+
+    $('#cancelDeleteUserBtn').on("click", async function () {
+        await renderUserManagementForm();
+    });
+}
+
+//////////////////////// Post Forms rendering /////////////////////////////////////////////////////////////////
 
 async function renderEditPostForm(id) {
     $('#commit').show();
@@ -466,6 +1283,10 @@ function newPost() {
     Post.Text = "";
     Post.Image = "news-logo-upload.png";
     Post.Category = "";
+    let user = Accounts_API.getLoggedUser();
+    if (user) {
+        Post.OwnerId = user.Id;
+    }
     return Post;
 }
 function renderPostForm(post = null) {
@@ -477,9 +1298,10 @@ function renderPostForm(post = null) {
     $("#form").append(`
         <form class="form" id="postForm">
             <input type="hidden" name="Id" value="${post.Id}"/>
-             <input type="hidden" name="Date" value="${post.Date}"/>
+            <input type="hidden" name="Date" value="${post.Date}"/>
+            <input type="hidden" name="OwnerId" value="${post.OwnerId}"/>
             <label for="Category" class="form-label">Catégorie </label>
-            <input 
+            <input
                 class="form-control"
                 name="Category"
                 id="Category"
@@ -488,10 +1310,10 @@ function renderPostForm(post = null) {
                 value="${post.Category}"
             />
             <label for="Title" class="form-label">Titre </label>
-            <input 
+            <input
                 class="form-control"
-                name="Title" 
-                id="Title" 
+                name="Title"
+                id="Title"
                 placeholder="Titre"
                 required
                 RequireMessage="Veuillez entrer un titre"
@@ -499,20 +1321,20 @@ function renderPostForm(post = null) {
                 value="${post.Title}"
             />
             <label for="Url" class="form-label">Texte</label>
-             <textarea class="form-control" 
-                          name="Text" 
+             <textarea class="form-control"
+                          name="Text"
                           id="Text"
-                          placeholder="Texte" 
+                          placeholder="Texte"
                           rows="9"
-                          required 
+                          required
                           RequireMessage = 'Veuillez entrer une Description'>${post.Text}</textarea>
 
             <label class="form-label">Image </label>
             <div class='imageUploaderContainer'>
-                <div class='imageUploader' 
-                     newImage='${create}' 
-                     controlId='Image' 
-                     imageSrc='${post.Image}' 
+                <div class='imageUploader'
+                     newImage='${create}'
+                     controlId='Image'
+                     imageSrc='${post.Image}'
                      waitingImage="Loading_icon.gif">
                 </div>
             </div>
@@ -595,4 +1417,8 @@ async function renderError(message) {
             </fieldset>
         `)
     );
+
+    $('#connectCmd').on("click", function () {
+        renderLoginForm();
+    });
 }

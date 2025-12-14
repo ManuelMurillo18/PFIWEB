@@ -1,7 +1,6 @@
 class Posts_API {
     static serverHost() {
-        return "https://linuxapiserver.azurewebsites.net";
-        //return "http://localhost:5000";
+         return "http://localhost:5000";
     }
     static POSTS_API_URL() { return this.serverHost() + "/api/posts" };
     static initHttpState() {
@@ -16,6 +15,9 @@ class Posts_API {
             this.currentHttpError = xhr.statusText == 'error' ? "Service introuvable" : xhr.statusText;
         this.currentStatus = xhr.status;
         this.error = true;
+    }
+    static getBearerToken() {
+        return sessionStorage.getItem("bearerToken");
     }
     static async HEAD() {
         this.initHttpState();
@@ -56,29 +58,39 @@ class Posts_API {
     static async Save(data, create = true) {
         this.initHttpState();
         return new Promise(resolve => {
-            $.ajax({
+            let ajaxConfig = {
                 url: create ? this.POSTS_API_URL() : this.POSTS_API_URL() + "/" + data.Id,
                 type: create ? "POST" : "PUT",
                 contentType: 'application/json',
                 data: JSON.stringify(data),
                 success: (data) => { resolve(data); },
                 error: (xhr) => { Posts_API.setHttpErrorState(xhr); resolve(null); }
-            });
+            };
+            let token = this.getBearerToken();
+            if (token) {
+                ajaxConfig.headers = { "Authorization": "Bearer " + token };
+            }
+            $.ajax(ajaxConfig);
         });
     }
     static async Delete(id) {
         this.initHttpState();
         return new Promise(resolve => {
-            $.ajax({
+            let ajaxConfig = {
                 url: this.POSTS_API_URL() + "/" + id,
                 type: "DELETE",
-                success: () => {
-                    resolve(true);
-                },
-                error: (xhr) => {
-                    Posts_API.setHttpErrorState(xhr); resolve(null);
-                }
-            });
+                success: () => { resolve(true); },
+                error: (xhr) => { Posts_API.setHttpErrorState(xhr); resolve(null); }
+            };
+            let token = this.getBearerToken();
+            if (token) {
+                ajaxConfig.headers = { "Authorization": "Bearer " + token };
+            }
+            $.ajax(ajaxConfig);
         });
+    }
+    static async logout() {
+        sessionStorage.removeItem("bearerToken");
+        sessionStorage.removeItem("user");
     }
 }

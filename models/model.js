@@ -17,6 +17,9 @@ export default class Model {
         this.key = null;
         this.securedId = securedId;
         this.state = { isValid: true, inConflict: false, notFound: false, errors: [] };
+        this.joints = [];
+        this.binds = [];
+        this.deleteCascades = [];
     }
     addField(propertyName, propertyType) {
         if (!this.isMember(propertyName))
@@ -35,6 +38,15 @@ export default class Model {
     }
     getClassName() {
         return this.constructor.name;
+    }
+    addJoint(jointName, jointModel, targetModel, selectedMembers = "") {
+        this.joints.push({ jointName, jointModel, targetModel, selectedMembers });
+    }
+    addBind(foreignKeyName, sourceModel, selectedMembers = "") {
+        this.binds.push({ foreignKeyName, sourceModel, selectedMembers });
+    }
+    addDeleteCascades(targetModel, foreignKeyName) {
+        this.deleteCascades.push({ targetModel, foreignKeyName });
     }
     valueValid(value, type) {
         if (value !== null) {
@@ -164,5 +176,17 @@ export default class Model {
         this.addHostReferenceToAssetFileNames(instanceCopy);
         return instanceCopy;
     }
-    bindExtraData(instance) { return instance; }
+    bindExtraData(instance) {
+        // Execute all registered joints
+        this.joints.forEach(joint => {
+            this.join(instance, joint.jointName, joint.jointModel, joint.targetModel, joint.selectedMembers);
+        });
+
+        // Execute all registered binds
+        this.binds.forEach(bind => {
+            this.bind(instance, bind.foreignKeyName, bind.sourceModel, bind.selectedMembers);
+        });
+
+        return instance;
+    }
 }

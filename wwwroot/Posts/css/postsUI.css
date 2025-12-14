@@ -99,6 +99,7 @@
 
 .postTextContainer {
     height: 66px;
+    transition: height 0.5s ease-out;
 }
 
 .postfooter {
@@ -159,4 +160,315 @@
     overflow-y: scroll;
     overflow-y: auto;
     scrollbar-gutter: stable;
+}
+
+/* Likes UI */
+.likesContainer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 0;
+    border-top: 1px solid #e0e0e0;
+}
+
+.likeIcon {
+    font-size: 20px;
+    color: #666;
+    transition: all 0.3s ease;
+}
+
+.likeIcon.likeCmd,
+.likeIcon.unlikeCmd {
+    cursor: pointer;
+}
+
+.likeIcon.likeCmd:hover {
+    color: #2196F3;
+    transform: scale(1.2);
+}
+
+.likeIcon.unlikeCmd:hover {
+    color: #f44336;
+    transform: scale(1.2);
+}
+
+.likeIcon.liked {
+    color: #2196F3;
+}
+
+.likesCount {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    cursor: help;
+}
+
+/* Post Owner */
+.postOwner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0;
+    padding: 8px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+}
+
+.ownerAvatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #2196F3;
+}
+
+.ownerName {
+    font-weight: bold;
+    color: #333;
+    font-size: 14px;
+}
+
+/* Authentication Forms */
+.loginForm,
+.registerForm,
+.verifyForm,
+.modifyProfileForm,
+.deleteAccountConfirm {
+    max-width: 500px;
+    margin: 20px auto;
+    padding: 30px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.loginForm h3,
+.registerForm h3,
+.verifyForm h3,
+.modifyProfileForm h3,
+.deleteAccountConfirm h3 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.loginForm input,
+.registerForm input,
+.verifyForm input,
+.modifyProfileForm input {
+    margin-bottom: 10px;
+}
+
+.loginForm label,
+.registerForm label,
+.modifyProfileForm label {
+    font-weight: bold;
+    margin-top: 10px;
+    display: block;
+    color: #555;
+}
+
+.loginForm button,
+.registerForm button,
+.verifyForm button,
+.modifyProfileForm button,
+.deleteAccountConfirm button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 6px;
+}
+
+.errorMessage {
+    background-color: #ffebee;
+    color: #c62828;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border-left: 4px solid #c62828;
+}
+
+.errorField {
+    color: #c62828;
+    font-size: 12px;
+    margin-top: -8px;
+    margin-bottom: 8px;
+}
+
+.deleteAccountConfirm p {
+    text-align: center;
+    color: #666;
+    margin: 20px 0;
+}
+
+/* User Menu */
+.menuUserAvatar {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #2196F3;
+}
+
+.userHeader {
+    pointer-events: none;
+    background-color: #f5f5f5 !important;
+}
+
+.userHeader:hover {
+    background-color: #f5f5f5 !important;
+}
+
+/* User Management */
+.userManagementForm {
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.userManagementForm h3 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #333;
+}
+
+#usersList {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.userRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+.userRow:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-color: #2196F3;
+}
+
+.userInfo {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex: 1;
+}
+
+.userRowAvatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #2196F3;
+}
+
+.userDetails {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.userName {
+    font-weight: bold;
+    font-size: 16px;
+    color: #333;
+}
+
+.userEmail {
+    font-size: 14px;
+    color: #666;
+}
+
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.badge-info {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.badge-warning {
+    background-color: #ffc107;
+    color: #333;
+}
+
+.badge-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.badge-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.userActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.userActions button {
+    white-space: nowrap;
+}
+
+.deleteUserConfirm {
+    max-width: 500px;
+    margin: 20px auto;
+    padding: 30px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.deleteUserConfirm h3 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.userToDelete {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.deleteUserConfirm p {
+    text-align: center;
+    margin: 15px 0;
+}
+
+.text-danger {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.deleteUserConfirm button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 6px;
 }

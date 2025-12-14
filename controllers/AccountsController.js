@@ -11,17 +11,20 @@ export default class AccountsController extends Controller {
         super(HttpContext, new Repository(new UserModel()), AccessControl.admin());
     }
     // POST: /token body payload[{"Email": "...", "Password": "..."}]
-    login(loginInfo) {
+    login(loginInfo) { 
         if (loginInfo) {
             if (this.repository != null) {
                 let user = this.repository.findByField("Email", loginInfo.Email);
                 if (user != null) {
-                    if (user.Password == loginInfo.Password) {
-                        user = this.repository.get(user.Id);
-                        let newToken = TokenManager.create(user);
-                        this.HttpContext.response.created(newToken);
-                    } else 
-                        this.HttpContext.response.wrongPassword("Wrong password.");
+                    if (user.Authorizations.readAccess > 0) {
+                        if (user.Password == loginInfo.Password) {
+                            user = this.repository.get(user.Id);
+                            let newToken = TokenManager.create(user);
+                            this.HttpContext.response.created(newToken);
+                        } else
+                            this.HttpContext.response.wrongPassword("Wrong password.");
+                    } else
+                        this.HttpContext.response.notAloud("This user is blocked.");
                 } else
                     this.HttpContext.response.userNotFound("This user email is not found.");
             } else
@@ -140,12 +143,12 @@ export default class AccountsController extends Controller {
             this.HttpContext.response.unAuthorized("Unauthorized access");
 
     }
-    block(user) {
+    toggleblock(user) {
         if (AccessControl.writeGranted(this.HttpContext.authorizations, AccessControl.admin())) {
             if (this.repository != null) {
                 let foundUser = this.repository.findByField("Id", user.Id);
-                foundUser.Authorizations.readAccess = foundUser.Authorizations.readAccess == 1 ? -1 : 1;
-                foundUser.Authorizations.writeAccess = foundUser.Authorizations.writeAccess == 1 ? -1 : 1;
+                foundUser.Authorizations.readAccess = -foundUser.Authorizations.readAccess;
+                foundUser.Authorizations.writeAccess = -foundUser.Authorizations.writeAccess;
                 this.repository.update(user.Id, foundUser, false);
                 if (this.repository.model.state.isValid) {
                     let userFound = this.repository.get(foundUser.Id); // get data binded record
@@ -195,11 +198,32 @@ export default class AccountsController extends Controller {
             this.HttpContext.response.unAuthorized();
     }
 
-    // GET:account/remove/id
-    remove(id) { // warning! this is not an API endpoint 
-        // todo make sure that the requester has legitimity to delete ethier itself or its an admin
-        if (AccessControl.writeGrantedAdminOrOwner(this.HttpContext.authorizations, this.requiredAuthorizations, id)) {
-            // todo
+    // DELETE: /api/accounts/id
+    remove(id) {
+        // Only admins or the account owner can delete
+        if (AccessControl.writeGranted(this.HttpContext.authorizations, AccessControl.admin())) {
+            // Admin can delete any account
+            if (this.HttpContext.path.id !== '') {
+                if (this.repository.remove(id))
+                    this.HttpContext.response.deleted();
+                else
+                    this.HttpContext.response.notFound("Resource not found.");
+            } else {
+                this.HttpContext.response.badRequest("The Id is not specified in the request url.");
+            }
+        } else if (AccessControl.writeGranted(this.HttpContext.authorizations, AccessControl.user())) {
+            // User can only delete their own account
+            let user = this.repository.get(id);
+            if (user && user.Id === this.HttpContext.user.Id) {
+                if (this.repository.remove(id))
+                    this.HttpContext.response.deleted();
+                else
+                    this.HttpContext.response.notFound("Resource not found.");
+            } else {
+                this.HttpContext.response.unAuthorized("You can only delete your own account.");
+            }
+        } else {
+            this.HttpContext.response.unAuthorized("Unauthorized access");
         }
     }
 }
