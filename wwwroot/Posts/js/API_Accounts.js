@@ -127,7 +127,25 @@ class Accounts_API {
         });
     }
 
-    static async conflict(email) {
+static async conflict(email, id = 0) {
+    this.initHttpState();
+    const e = encodeURIComponent(email ?? "");
+    return new Promise(resolve => {
+        $.ajax({
+            url: this.ACCOUNTS_API_URL() + `/conflict?Email=${e}&Id=${id}`,
+            type: "GET",
+            success: (data) => resolve(data),
+            error: (xhr) => {
+                this.setHttpErrorState(xhr);
+                resolve(null); // null = erreur serveur (pas "compte supprimé")
+            }
+        });
+    });
+}
+
+
+
+/*     static async conflict(email) {
         this.initHttpState();
         return new Promise(resolve => {
             $.ajax({
@@ -140,7 +158,24 @@ class Accounts_API {
                 }
             });
         });
+    } */
+
+    static async getById(userId) {
+        this.initHttpState();
+        return new Promise(resolve => {
+            $.ajax({
+                url: this.serverHost() + "/api/accounts/" + userId,
+                type: "GET",
+                headers: { "Authorization": "Bearer " + this.getBearerToken() },
+                success: (data) => resolve(data),
+                error: (xhr) => {
+                    this.setHttpErrorState(xhr);
+                    resolve(null);
+                }
+            });
+        });
     }
+
 
     static getLoggedUser() {
         let user = sessionStorage.getItem("user");

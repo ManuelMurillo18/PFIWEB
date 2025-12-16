@@ -2,6 +2,8 @@
 ////// 2024
 //////////////////////////////
 
+let periodicTickRunning = false;
+
 const periodicRefreshPeriod = 10;
 const waitingGifTrigger = 2000;
 const minKeywordLenth = 3;
@@ -16,6 +18,7 @@ let itemLayout;
 let waiting = null;
 let showKeywords = false;
 let keywordsOnchangeTimger = null;
+
 
 
 Init_UI();
@@ -71,8 +74,41 @@ async function Init_UI() {
 }
 
 /////////////////////////// User permissions ////////////////////////////////////////////////////////////
-
 function canCreatePost(user) {
+    if (!user) return false;
+    if (user.isAdmin) return false;
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return user.isSuper || wa >= 2;
+}
+
+function canEditPost(user, post) {
+    if (!user || !post) return false;
+    if (user.isAdmin) return false;
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return post.OwnerId === user.Id && (user.isSuper || wa >= 2);
+}
+
+function canDeletePost(user, post) {
+    if (!user || !post) return false;
+    if (user.isAdmin) return true;
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return post.OwnerId === user.Id && (user.isSuper || wa >= 2);
+}
+
+function canLikePost(user) {
+    return user != null && !user.isBlocked;
+}
+
+function canManageUsers(user) {
+    return user != null && user.isAdmin;
+}
+
+
+
+/* function canCreatePost(user) {
     if (!user) return false;
     return user.Authorizations.writeAccess >= 1 || user.isSuper;
 }
@@ -95,7 +131,7 @@ function canLikePost(user) {
 
 function canManageUsers(user) {
     return user != null && user.isAdmin;
-}
+} */
 
 /////////////////////////// Menu management ////////////////////////////////////////////////////////////
 
@@ -229,7 +265,107 @@ function showAbout() {
 
 //////////////////////////// Posts rendering /////////////////////////////////////////////////////////////
 
+
+
+// Ajoute ça (une seule fois) avec tes variables globales
+
+let periodicRefreshHandle = null;
+let refreshInProgress = false;
+
 function start_Periodic_Refresh() {
+    if (periodicRefreshHandle) clearInterval(periodicRefreshHandle);
+
+    periodicRefreshHandle = setInterval(async () => {
+        if (refreshInProgress) return;
+        refreshInProgress = true;
+
+        try {
+            // ✅ Déconnexion auto si compte supprimé
+            await validateSessionStillValid();
+
+            // Le reste (posts) seulement si on est sur la page posts
+            if (periodic_Refresh_paused) return;
+
+            updateVisiblePosts();
+
+            const probe = await Posts_API.GetQuery("?limit=1&offset=0&sort=-date");
+            if (Posts_API.error || !probe) return;
+
+            const newETag = probe.ETag ?? probe.eTag ?? probe.etag;
+            if (!newETag) return;
+
+            if (currentETag !== "" && currentETag !== newETag) {
+                currentETag = newETag;
+                await postsPanel.update(false);
+            } else if (currentETag === "") {
+                currentETag = newETag;
+            }
+        } finally {
+            refreshInProgress = false;
+        }
+    }, periodicRefreshPeriod * 1000);
+}
+
+/* function start_Periodic_Refresh() {
+    // évite plusieurs timers
+    if (periodicRefreshHandle) clearInterval(periodicRefreshHandle);
+
+    periodicRefreshHandle = setInterval(async () => {
+        if (periodic_Refresh_paused || refreshInProgress) return;
+
+        refreshInProgress = true;
+        try {
+            // (optionnel) seulement si ces fonctions existent chez toi
+            if (typeof validateSessionStillValid === "function")
+                await validateSessionStillValid();
+
+            if (typeof syncLoggedUserPermissions === "function")
+                await syncLoggedUserPermissions();
+
+            // refresh likes/boutons visibles
+            updateVisiblePosts();
+
+            // refresh de la LISTE si changements détectés
+            const probe = await Posts_API.GetQuery("?limit=1&offset=0&sort=-date");
+            if (Posts_API.error || !probe) return;
+
+            const newETag = probe.ETag ?? probe.eTag ?? probe.etag;
+            if (!newETag) return;
+
+            if (currentETag !== "" && currentETag !== newETag) {
+                currentETag = newETag;
+                await postsPanel.update(false); // ✅ met à jour la liste sans reset scroll
+            } else if (currentETag === "") {
+                currentETag = newETag;
+            }
+        } finally {
+            refreshInProgress = false;
+        }
+    }, periodicRefreshPeriod * 1000);
+} */
+
+
+
+/* function start_Periodic_Refresh() {
+    if (periodicRefreshHandle) clearInterval(periodicRefreshHandle);
+
+    periodicRefreshHandle = setInterval(async () => {
+        if (periodic_Refresh_paused || periodicTickRunning) return;
+
+        periodicTickRunning = true;
+        try {
+            await syncLoggedUserPermissions();
+
+            // garde ton refresh posts existant
+            updateVisiblePosts();
+        } finally {
+            periodicTickRunning = false;
+        }
+    }, periodicRefreshPeriod * 1000);
+} */
+
+
+/* function start_Periodic_Refresh() {
 
     setInterval(async () => {
         if (!periodic_Refresh_paused) {
@@ -240,7 +376,7 @@ function start_Periodic_Refresh() {
         }
     },
         periodicRefreshPeriod * 1000);
-}
+} */
 
 function updateVisiblePosts() {
     $('.post').each(async function () {
@@ -567,7 +703,6 @@ function attach_Posts_UI_Events_Callback() {
 
     linefeeds_to_Html_br(".postText");
 
-    // attach icon command click event callback
     $(".editCmd").off();
     $(".editCmd").on("click", function () {
         timeout();
@@ -618,12 +753,12 @@ function linefeeds_to_Html_br(selector) {
         postText.html(str.replace(regex, "<br>"));
     })
 }
+
 function highlight(text, elem) {
     text = text.trim();
     if (text.length >= minKeywordLenth) {
         var innerHTML = elem.innerHTML;
         let startIndex = 0;
-
         while (startIndex < innerHTML.length) {
             var normalizedHtml = innerHTML.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             var index = normalizedHtml.indexOf(text, startIndex);
@@ -652,6 +787,30 @@ function highlightKeywords() {
                     highlight(key, text);
                 })
             })
+        }
+    }
+}
+
+async function purgeUserPostsAndLikes(userId) {
+    let userLikes = await PostLikes_API.GetQuery("?UserId=" + userId);
+    if (userLikes) {
+        for (const like of userLikes) {
+            await PostLikes_API.Delete(like.Id);
+        }
+    }
+
+    while (true) {
+        let resp = await Posts_API.GetQuery(`?OwnerId=${userId}&limit=50&offset=0`);
+        if (!resp || !resp.data || resp.data.length === 0) break;
+
+        for (const post of resp.data) {
+            let postLikes = await PostLikes_API.getPostLikes(post.Id);
+            if (postLikes) {
+                for (const pl of postLikes) {
+                    await PostLikes_API.Delete(pl.Id);
+                }
+            }
+            await Posts_API.Delete(post.Id);
         }
     }
 }
@@ -698,6 +857,7 @@ function renderLoginForm(message = "") {
 
         if (result && result.Access_token) {
             Accounts_API.setBearerToken(result.Access_token);
+            result.User.Password = password;
             Accounts_API.setLoggedUser(result.User);
 
             if (result.User.VerifyCode !== "verified") {
@@ -927,6 +1087,7 @@ function renderModifyProfileForm() {
         let result = await Accounts_API.modify(userData);
 
         if (result) {
+            result.Password = userData.Password ?? user.Password; // ✅ conserve le password
             if (emailChanged) {
                 popupMessage("Votre profil a été modifié. Veuillez vérifier votre nouveau courriel.");
                 Accounts_API.setLoggedUser(result);
@@ -964,6 +1125,8 @@ function renderDeleteAccountConfirm(user) {
     `);
 
     $('#confirmDeleteBtn').on("click", async function () {
+        await purgeUserPostsAndLikes(user.Id);
+
         let result = await Accounts_API.remove(user.Id);
         if (result) {
             noTimeout();
@@ -973,6 +1136,7 @@ function renderDeleteAccountConfirm(user) {
             popupMessage("Erreur lors de la suppression du compte");
         }
     });
+
 
     $('#cancelDeleteBtn').on("click", function () {
         renderModifyProfileForm();
@@ -988,7 +1152,6 @@ async function renderUserManagementForm() {
     $("#form").show();
     $("#form").empty();
 
-    // Fetch all users
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts", {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1007,12 +1170,10 @@ async function renderUserManagementForm() {
         </div>
     `);
 
-    // Render each user
     users.forEach(user => {
         $("#usersList").append(renderUserManagementRow(user));
     });
 
-    // Attach events
     attachUserManagementEvents();
 }
 
@@ -1093,7 +1254,6 @@ function attachUserManagementEvents() {
 async function changeUserPermissions(userId) {
     timeout();
 
-    // Fetch current user data
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1105,7 +1265,6 @@ async function changeUserPermissions(userId) {
 
     let user = await response.json();
 
-    // Use the promote endpoint to cycle permissions
     let promoteResponse = await fetch(Accounts_API.serverHost() + "/accounts/promote", {
         method: "POST",
         headers: {
@@ -1116,14 +1275,11 @@ async function changeUserPermissions(userId) {
     });
 
     if (promoteResponse.ok) {
-        // Get updated user data
         let updatedUser = await promoteResponse.json();
 
-        // Partial refresh: only update this user's row
         let userRowHtml = renderUserManagementRow(updatedUser);
         $(`.userRow[userId="${userId}"]`).replaceWith(userRowHtml);
 
-        // Re-attach events to the new row
         attachUserManagementEvents();
     } else {
         popupMessage("Erreur lors de la modification des permissions");
@@ -1133,7 +1289,6 @@ async function changeUserPermissions(userId) {
 async function toggleBlockUser(userId) {
     timeout();
 
-    // Fetch current user data
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1145,7 +1300,6 @@ async function toggleBlockUser(userId) {
 
     let user = await response.json();
 
-    // Use the toggleblock endpoint
     let toggleResponse = await fetch(Accounts_API.serverHost() + "/accounts/toggleblock", {
         method: "POST",
         headers: {
@@ -1156,14 +1310,11 @@ async function toggleBlockUser(userId) {
     });
 
     if (toggleResponse.ok) {
-        // Get updated user data
         let updatedUser = await toggleResponse.json();
 
-        // Partial refresh: only update this user's row
         let userRowHtml = renderUserManagementRow(updatedUser);
         $(`.userRow[userId="${userId}"]`).replaceWith(userRowHtml);
 
-        // Re-attach events to the new row
         attachUserManagementEvents();
     } else {
         popupMessage("Erreur lors du blocage/déblocage");
@@ -1171,7 +1322,6 @@ async function toggleBlockUser(userId) {
 }
 
 async function confirmDeleteUser(userId) {
-    // Fetch user data for confirmation
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1203,19 +1353,22 @@ async function confirmDeleteUser(userId) {
         </div>
     `);
 
-    $('#confirmDeleteUserBtn').on("click", async function () {
-        let deleteResponse = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
-            method: "DELETE",
-            headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
-        });
+$('#confirmDeleteUserBtn').one("click", async function () {
+    // 1) Supprimer likes + posts liés à cet usager
+    await purgeUserPostsAndLikes(userId);
 
-        if (deleteResponse.ok) {
-            await renderUserManagementForm();
-        } else {
-            popupMessage("Erreur lors de la suppression de l'usager");
-        }
+    // 2) Supprimer le compte
+    let deleteResponse = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
 
+    if (deleteResponse.ok) {
+        await renderUserManagementForm();
+    } else {
+        popupMessage("Erreur lors de la suppression de l'usager");
+    }
+});
     $('#cancelDeleteUserBtn').on("click", async function () {
         await renderUserManagementForm();
     });
@@ -1229,6 +1382,7 @@ async function renderEditPostForm(id) {
     let response = await Posts_API.Get(id)
     if (!Posts_API.error) {
         let Post = response.data;
+
         if (Post !== null)
             renderPostForm(Post);
         else
@@ -1239,6 +1393,58 @@ async function renderEditPostForm(id) {
     removeWaitingGif();
 }
 async function renderDeletePostForm(id) {
+    $("#form").empty();
+
+    $('#commit').off('click');
+    $('#abort').off('click');
+
+    let response = await Posts_API.Get(id);
+    if (Posts_API.error) {
+        showError(Posts_API.currentHttpError);
+        return;
+    }
+
+    let post = response.data;
+
+
+    if (!post) {
+        showError("Post introuvable!");
+        return;
+    }
+
+    let date = convertToFrenchDate(UTC_To_Local(post.Date));
+
+    $("#form").append(`
+        <div class="post" id="${post.Id}">
+            <div class="postHeader">${post.Category}</div>
+            <div class="postTitle ellipsis">${post.Title}</div>
+            <img class="postImage" src="${post.Image}"/>
+            <div class="postDate">${date}</div>
+            <div class="postTextContainer showExtra">
+                <div class="postText">${post.Text}</div>
+            </div>
+        </div>
+        <div class="formHint">Clique ✔ pour confirmer la suppression.</div>
+    `);
+
+    linefeeds_to_Html_br("#form .postText");
+
+    $('#commit').one("click", async function () {
+        await Posts_API.Delete(post.Id);
+        if (!Posts_API.error) {
+            await showPosts(true);
+        } else {
+            showError(Posts_API.currentHttpError);
+        }
+    });
+
+    $('#abort').one("click", async function () {
+        await showPosts();
+    });
+}
+
+
+/* async function renderDeletePostForm(id) {
     let response = await Posts_API.Get(id)
     if (!Posts_API.error) {
         let post = response.data;
@@ -1275,7 +1481,7 @@ async function renderDeletePostForm(id) {
         }
     } else
         showError(Posts_API.currentHttpError);
-}
+} */
 function newPost() {
     let Post = {};
     Post.Id = 0;
@@ -1348,7 +1554,7 @@ function renderPostForm(post = null) {
     if (create) $("#keepDateControl").hide();
 
     initImageUploaders();
-    initFormValidation(); // important do to after all html injection!
+    initFormValidation();
 
     $("#commit").click(function () {
         $("#commit").off();
@@ -1375,10 +1581,8 @@ function renderPostForm(post = null) {
     });
 }
 function getFormData($form) {
-    // prevent html injections
     const removeTag = new RegExp("(<[a-zA-Z0-9]+>)|(</[a-zA-Z0-9]+>)", "g");
     var jsonObject = {};
-    // grab data from all controls
     $.each($form.serializeArray(), (index, control) => {
         jsonObject[control.name] = control.value.replace(removeTag, "");
     });
@@ -1422,3 +1626,206 @@ async function renderError(message) {
         renderLoginForm();
     });
 }
+
+async function forceLocalLogout(message = "Votre compte a été supprimé par un administrateur.") {
+    sessionStorage.removeItem("bearerToken");
+    sessionStorage.removeItem("user");
+
+    noTimeout();
+    updateMenuForAnonymous();
+    await showPosts(true);
+
+    popupMessage(message);
+}
+
+let missingUserCount = 0;
+
+async function validateSessionStillValid() {
+    if (!Accounts_API.isLoggedIn()) {
+        missingUserCount = 0;
+        return;
+    }
+
+    const user = Accounts_API.getLoggedUser();
+    if (!user?.Email) return;
+
+    const res = await Accounts_API.conflict(user.Email, 0);
+
+    // Si erreur serveur/réseau -> on ne logout pas
+    if (res === null || Accounts_API.error) return;
+
+    // conflict endpoint: true = email existe déjà (donc compte existe)
+    const exists = (res === true) || (res?.conflict === true) || (res?.Conflict === true);
+
+    if (exists) {
+        missingUserCount = 0;
+        return;
+    }
+
+    // Anti faux-positif: 2 checks négatifs de suite
+    missingUserCount++;
+    if (missingUserCount >= 2) {
+        missingUserCount = 0;
+        await forceLocalLogout();
+    }
+}
+
+
+/* async function forceLocalLogout(message = "Votre compte a été supprimé par un administrateur.") {
+    sessionStorage.removeItem("bearerToken");
+    sessionStorage.removeItem("user");
+
+    noTimeout();
+    updateMenuForAnonymous();
+    await showPosts(true);
+
+    popupMessage(message);
+}
+let sessionMissingCount = 0;
+
+async function validateSessionStillValid() {
+    if (!Accounts_API.isLoggedIn()) return;
+
+    const user = Accounts_API.getLoggedUser();
+    if (!user?.Email) return;
+
+    const res = await Accounts_API.conflict(user.Email, 0);
+
+    if (Accounts_API.error || res === null || res === undefined) return;
+
+    const exists =
+        res === true ||
+        res === "true" ||
+        res?.conflict === true ||
+        res?.Conflict === true;
+
+    if (exists) {
+        sessionMissingCount = 0;
+        return;
+    }
+
+    sessionMissingCount++;
+    if (sessionMissingCount >= 2) {
+        sessionMissingCount = 0;
+        await forceLocalLogout("Votre compte a été supprimé par un administrateur.");
+    }
+} */
+
+
+// -------------------------- Need to test -----------------------------
+/* let permissionPollLast = 0;
+const permissionPollMs = 8000;
+let permissionSyncRunning = false; */
+
+/* function permissionSignature(u) {
+    if (!u) return "";
+    return JSON.stringify({
+        Id: u.Id,
+        isAdmin: !!u.isAdmin,
+        isSuper: !!u.isSuper,
+        isBlocked: !!u.isBlocked,
+        writeAccess: u.Authorizations?.writeAccess ?? 0,
+        readAccess: u.Authorizations?.readAccess ?? 0
+    });
+} */
+
+/* async function syncLoggedUserPermissions() {
+  if (!Accounts_API.isLoggedIn() || permissionSyncRunning) return;
+
+  const now = Date.now();
+  if (now - permissionPollLast < permissionPollMs) return;
+  permissionPollLast = now;
+
+  const current = Accounts_API.getLoggedUser();
+  if (!current?.Email || !current?.Password) return;
+
+  permissionSyncRunning = true;
+  try {
+    const res = await Accounts_API.login(current.Email, current.Password);
+
+    // si login refuse (ex: compte bloqué), on logout local
+    if (!res?.Access_token || !res?.User) {
+      if (Accounts_API.currentStatus === 403 /* ou ton code custom ) {
+        await forceLocalLogout("Compte bloqué par l'administrateur.");
+      }
+      return;
+    }
+
+    res.User.Password = current.Password;
+    if (!res.User.Avatar) res.User.Avatar = current.Avatar;
+
+    Accounts_API.setBearerToken(res.Access_token);
+
+    if (permissionSignature(res.User) !== permissionSignature(current)) {
+      Accounts_API.setLoggedUser(res.User);
+      updateMenuForUser(res.User);
+      await showPosts(true);
+    }
+  } finally {
+    permissionSyncRunning = false;
+  }
+} */
+
+// ----------------------------------ROLLLBACK--------------------------
+let permissionPollLast = 0;
+const permissionPollMs = 8000;
+let permissionSyncRunning = false;
+
+function permissionSignature(u) {
+    if (!u) return "";
+    return JSON.stringify({
+        Id: u.Id,
+        wa: u.Authorizations?.writeAccess ?? 0,
+        ra: u.Authorizations?.readAccess ?? 0,
+        isAdmin: !!u.isAdmin,
+        isSuper: !!u.isSuper,
+        isBlocked: !!u.isBlocked
+    });
+}
+
+async function syncLoggedUserPermissions() {
+    if (!Accounts_API.isLoggedIn() || permissionSyncRunning) return;
+
+    const now = Date.now();
+    if (now - permissionPollLast < permissionPollMs) return;
+    permissionPollLast = now;
+
+    const current = Accounts_API.getLoggedUser();
+    if (!current?.Email || !current?.Password) return;
+
+    permissionSyncRunning = true;
+    try {
+        const res = await Accounts_API.login(current.Email, current.Password);
+
+        // Si le compte n'existe plus / est bloqué / etc.
+        if (!res?.Access_token || !res?.User) {
+            // si le compte est supprimé, tu peux aussi logout local ici
+            // await forceLocalLogout("Votre session n'est plus valide.");
+            return;
+        }
+
+        // on conserve le password en session (tu le fais déjà au login)
+        res.User.Password = current.Password;
+        if (!res.User.Avatar) res.User.Avatar = current.Avatar;
+
+        // refresh token
+        Accounts_API.setBearerToken(res.Access_token);
+
+        // si les permissions changent -> refresh UI
+        if (permissionSignature(res.User) !== permissionSignature(current)) {
+            Accounts_API.setLoggedUser(res.User);
+            updateMenuForUser(res.User);
+            updateVisiblePosts(); // refresh boutons (edit/delete/like)
+        }
+    } finally {
+        permissionSyncRunning = false;
+    }
+}
+
+
+
+
+
+
+
+
