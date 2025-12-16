@@ -10,7 +10,6 @@ export default class AccountsController extends Controller {
     constructor(HttpContext) {
         super(HttpContext, new Repository(new UserModel()), AccessControl.admin());
     }
-    // POST: /token body payload[{"Email": "...", "Password": "..."}]
     login(loginInfo) { 
         if (loginInfo) {
             if (this.repository != null) {
@@ -42,7 +41,6 @@ export default class AccountsController extends Controller {
         }
     }
     sendVerificationEmail(user) {
-        // bypass model bindeExtraData wich hide the user verifyCode
         let html = `
                 Bonjour ${user.Name}, <br /> <br />
                 Voici votre code pour confirmer votre adresse de courriel
@@ -62,7 +60,6 @@ export default class AccountsController extends Controller {
         gmail.send(user.Email, 'Courriel confirmé...', html);
     }
 
-    //GET : /accounts/verify?id=...&code=.....
     verify() {
         if (this.repository != null) {
             let id = this.HttpContext.path.params.id;
@@ -73,7 +70,7 @@ export default class AccountsController extends Controller {
                     userFound.VerifyCode = "verified";
                     this.repository.update(userFound.Id, userFound, false);
                     if (this.repository.model.state.isValid) {
-                        userFound = this.repository.get(userFound.Id); // get data binded record
+                        userFound = this.repository.get(userFound.Id); 
                         this.HttpContext.response.JSON(userFound);
                         this.sendConfirmedEmail(userFound);
                     } else {
@@ -88,7 +85,7 @@ export default class AccountsController extends Controller {
         } else
             this.HttpContext.response.notImplemented();
     }
-    //GET : /accounts/conflict?Id=...&Email=.....
+
     conflict() {
         if (this.repository != null) {
             let id = this.HttpContext.path.params.Id;
@@ -102,7 +99,6 @@ export default class AccountsController extends Controller {
             this.HttpContext.response.JSON(false);
     }
 
-    // POST: account/register body payload[{"Id": 0, "Name": "...", "Email": "...", "Password": "..."}]
     register(user) {
         if (this.repository != null) {
             user.Created = utilities.nowInSeconds();
@@ -161,18 +157,16 @@ export default class AccountsController extends Controller {
         } else
             this.HttpContext.response.unAuthorized("Unauthorized access");
     }
-    // PUT:account/modify body payload[{"Id": 0, "Name": "...", "Email": "...", "Password": "..."}]
     modify(user) {
-        // empty asset members imply no change and there values will be taken from the stored record
         if (AccessControl.writeGranted(this.HttpContext.authorizations, AccessControl.user())) {
             if (this.repository != null) {
                 user.Created = utilities.nowInSeconds();
                 let foundedUser = this.repository.findByField("Id", user.Id);
                 if (foundedUser != null) {
-                    if (user.Password == '') { // password not changed
+                    if (user.Password == '') {
                         user.Password = foundedUser.Password;
                     }
-                    user.Authorizations = foundedUser.Authorizations; // user cannot change its own authorizations
+                    user.Authorizations = foundedUser.Authorizations;
                     if (user.Email != foundedUser.Email) {
                         user.VerifyCode = utilities.makeVerifyCode(6);
                         this.sendVerificationEmail(user);
@@ -182,7 +176,7 @@ export default class AccountsController extends Controller {
                     let updatedUser = this.repository.update(user.Id, user);
                     if (this.repository.model.state.isValid) {
                         this.HttpContext.response.accepted(updatedUser);
-                        // todo : renew etag of all user related repositories
+                      
                     }
                     else {
                         if (this.repository.model.state.inConflict)

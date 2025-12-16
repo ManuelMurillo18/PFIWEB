@@ -162,7 +162,7 @@
     scrollbar-gutter: stable;
 }
 
-/* Likes UI */
+/* Likes UI - MODIFIÉ (Sobre) */
 .likesContainer {
     display: flex;
     align-items: center;
@@ -174,8 +174,8 @@
 
 .likeIcon {
     font-size: 20px;
-    color: #666;
-    transition: all 0.3s ease;
+    color: #888; /* Gris par défaut */
+    transition: all 0.2s ease;
 }
 
 .likeIcon.likeCmd,
@@ -184,13 +184,13 @@
 }
 
 .likeIcon.likeCmd:hover {
-    color: #2196F3;
-    transform: scale(1.2);
+    color: #555; 
+    transform: scale(1.1);
 }
 
 .likeIcon.unlikeCmd:hover {
-    color: #f44336;
-    transform: scale(1.2);
+    color: #2196F3; /* Reste bleu au survol si déjà liké */
+    transform: scale(1.1);
 }
 
 .likeIcon.liked {
@@ -201,7 +201,7 @@
     font-size: 16px;
     font-weight: bold;
     color: #333;
-    cursor: help;
+    cursor: default; /* Plus de curseur 'help' */
 }
 
 /* Post Owner */
@@ -321,42 +321,55 @@
     background-color: #f5f5f5 !important;
 }
 
-/* User Management */
+/* User Management - MODIFIÉ (Style Sérieux/Tableau) */
 .userManagementForm {
-    max-width: 900px;
-    margin: 20px auto;
-    padding: 20px;
+    max-width: 1000px;
+    margin: 30px auto;
+    padding: 0;
     background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    box-shadow: none;
 }
 
 .userManagementForm h3 {
-    text-align: center;
-    margin-bottom: 30px;
+    text-align: left;
+    margin: 0;
+    padding: 15px 20px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
     color: #333;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 #usersList {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 0;
 }
 
 .userRow {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px;
-    background: #f9f9f9;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
-    transition: all 0.3s ease;
+    padding: 12px 20px;
+    background: white;
+    border-bottom: 1px solid #eee;
+    transition: background-color 0.1s ease;
+    border-radius: 0;
+}
+
+.userRow:last-child {
+    border-bottom: none;
 }
 
 .userRow:hover {
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-color: #2196F3;
+    background-color: #fbfbfb;
+    box-shadow: none;
+    border-color: #eee;
 }
 
 .userInfo {
@@ -367,76 +380,131 @@
 }
 
 .userRowAvatar {
-    width: 60px;
-    height: 60px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid #2196F3;
+    border: 1px solid #ddd;
 }
 
 .userDetails {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 2px;
 }
 
 .userName {
-    font-weight: bold;
-    font-size: 16px;
-    color: #333;
+    font-weight: 600;
+    font-size: 15px;
+    color: #2c3e50;
 }
 
 .userEmail {
-    font-size: 14px;
-    color: #666;
+    font-size: 13px;
+    color: #7f8c8d;
 }
 
+/* Badges - Style Outline */
 .badge {
     display: inline-block;
-    padding: 4px 8px;
+    padding: 3px 8px;
     border-radius: 4px;
-    font-size: 12px;
-    font-weight: bold;
+    font-size: 11px;
+    font-weight: 600;
     margin-right: 5px;
+    text-transform: uppercase;
+    background-color: transparent;
+    border: 1px solid #ccc;
 }
 
 .badge-info {
-    background-color: #17a2b8;
-    color: white;
+    color: #007bff;
+    border-color: #007bff;
+    background-color: #f0f7ff;
 }
 
 .badge-warning {
-    background-color: #ffc107;
-    color: #333;
+    color: #d35400;
+    border-color: #d35400;
+    background-color: #fff5f0;
 }
 
 .badge-danger {
-    background-color: #dc3545;
-    color: white;
+    color: #c0392b;
+    border-color: #c0392b;
+    background-color: #fff0f0;
 }
 
 .badge-secondary {
-    background-color: #6c757d;
+    background-color: #333;
     color: white;
+    border-color: #333;
 }
 
+/* User Actions - MODIFIÉ (Style Soft UI) */
 .userActions {
     display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
 }
 
 .userActions button {
-    white-space: nowrap;
+    border: none;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    box-shadow: none !important;
 }
 
+.changePermissionBtn {
+    color: #007bff;
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.changePermissionBtn:hover {
+    background-color: #007bff;
+    color: white;
+}
+
+.blockUserBtn {
+    color: #d35400;
+    background-color: rgba(211, 84, 0, 0.1);
+}
+
+.blockUserBtn:hover {
+    background-color: #d35400;
+    color: white;
+}
+
+.deleteUserBtn {
+    color: #c0392b;
+    background-color: rgba(192, 57, 43, 0.1);
+}
+
+.deleteUserBtn:hover {
+    background-color: #c0392b;
+    color: white;
+}
+
+.userActions button i {
+    font-size: 1.1em;
+}
+
+/* Delete User Confirm (Table style adaptation) */
 .deleteUserConfirm {
     max-width: 500px;
     margin: 20px auto;
-    padding: 30px;
+    padding: 20px;
     background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 .deleteUserConfirm h3 {
@@ -449,9 +517,10 @@
     display: flex;
     align-items: center;
     gap: 15px;
-    padding: 20px;
+    padding: 15px;
     background: #f9f9f9;
-    border-radius: 8px;
+    border: 1px solid #eee;
+    border-radius: 4px;
     margin-bottom: 20px;
 }
 

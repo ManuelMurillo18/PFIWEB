@@ -99,4 +99,31 @@ class PostLikes_API {
             });
         });
     }
+
+    static async GetQuery(queryString = "") {
+    this.initHttpState();
+    return new Promise(resolve => {
+        $.ajax({
+            url: this.POSTLIKES_API_URL() + queryString,
+            type: "GET",
+            headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") },
+            success: (data) => { resolve(data); },
+            error: (xhr) => { this.setHttpErrorState(xhr); resolve(null); }
+        });
+    });
+}
+
+static async Delete(id) {
+    this.initHttpState();
+    return new Promise(resolve => {
+        $.ajax({
+            url: this.POSTLIKES_API_URL() + "/" + id,
+            type: "DELETE",
+            headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") },
+            success: () => { resolve(true); },
+            error: (xhr) => { this.setHttpErrorState(xhr); resolve(false); }
+        });
+    });
+}
+
 }

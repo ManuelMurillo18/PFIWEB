@@ -19,18 +19,21 @@ class Posts_API {
     static getBearerToken() {
         return sessionStorage.getItem("bearerToken");
     }
-    static async HEAD() {
-        this.initHttpState();
-        return new Promise(resolve => {
-            $.ajax({
-                url: this.POSTS_API_URL(),
-                type: 'HEAD',
-                contentType: 'text/plain',
-                complete: data => { resolve(data.getResponseHeader('ETag')); },
-                error: (xhr) => { Posts_API.setHttpErrorState(xhr); resolve(null); }
-            });
+static async HEAD() {
+    this.initHttpState();
+    return new Promise(resolve => {
+        $.ajax({
+            url: this.POSTS_API_URL() + "?_=" + Date.now(), // ✅ évite le cache
+            type: 'HEAD',
+            cache: false,
+            headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+            contentType: 'text/plain',
+            complete: data => { resolve(data.getResponseHeader('ETag')); },
+            error: (xhr) => { Posts_API.setHttpErrorState(xhr); resolve(null); }
         });
-    }
+    });
+}
+
     static async Get(id = null) {
         this.initHttpState();
         return new Promise(resolve => {

@@ -51,23 +51,37 @@ class Accounts_API {
             });
         });
     }
-
-    static async login(email, password) {
-        this.initHttpState();
-        return new Promise(resolve => {
-            $.ajax({
-                url: this.TOKEN_API_URL(),
-                type: "POST",
-                contentType: 'application/json',
-                data: JSON.stringify({ Email: email, Password: password }),
-                success: (data) => { resolve(data); },
-                error: (xhr) => {
-                    this.setHttpErrorState(xhr);
-                    resolve(null);
-                }
-            });
+static async login(email, password) {
+    this.initHttpState();
+    try {
+        const resp = await fetch(this.TOKEN_API_URL(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ Email: email, Password: password })
         });
+
+        const raw = await resp.text();
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+
+        if (resp.ok) return data;
+
+        this.error = true;
+        this.currentStatus = resp.status;
+        this.currentHttpError =
+            (data && (data.error_description || data.message || data.error)) ||
+            resp.statusText;
+
+        return null;
+    } catch {
+        this.error = true;
+        this.currentStatus = 0;
+        this.currentHttpError = "Service introuvable";
+        return null;
     }
+}
+
+
 
     static async logout(userId) {
         this.initHttpState();
@@ -127,20 +141,39 @@ class Accounts_API {
         });
     }
 
-    static async conflict(email) {
+static async conflict(email, id = 0) {
+    this.initHttpState();
+    const e = encodeURIComponent(email ?? "");
+    return new Promise(resolve => {
+        $.ajax({
+            url: this.ACCOUNTS_API_URL() + `/conflict?Email=${e}&Id=${id}`,
+            type: "GET",
+            success: (data) => resolve(data),
+            error: (xhr) => {
+                this.setHttpErrorState(xhr);
+                resolve(null);
+            }
+        });
+    });
+}
+
+
+    static async getById(userId) {
         this.initHttpState();
         return new Promise(resolve => {
             $.ajax({
-                url: this.ACCOUNTS_API_URL() + "/conflict?Email=" + email,
+                url: this.serverHost() + "/api/accounts/" + userId,
                 type: "GET",
-                success: (data) => { resolve(data); },
+                headers: { "Authorization": "Bearer " + this.getBearerToken() },
+                success: (data) => resolve(data),
                 error: (xhr) => {
                     this.setHttpErrorState(xhr);
-                    resolve(false);
+                    resolve(null);
                 }
             });
         });
     }
+
 
     static getLoggedUser() {
         let user = sessionStorage.getItem("user");

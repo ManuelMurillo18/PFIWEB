@@ -2,6 +2,8 @@
 ////// 2024
 //////////////////////////////
 
+let periodicTickRunning = false;
+
 const periodicRefreshPeriod = 10;
 const waitingGifTrigger = 2000;
 const minKeywordLenth = 3;
@@ -17,6 +19,9 @@ let waiting = null;
 let showKeywords = false;
 let keywordsOnchangeTimger = null;
 
+const sessionDurationLimit = 2; // in minutes
+
+
 
 Init_UI();
 async function Init_UI() {
@@ -26,7 +31,7 @@ async function Init_UI() {
     if (Accounts_API.isLoggedIn()) {
         let user = Accounts_API.getLoggedUser();
         updateMenuForUser(user);
-        initTimeout(600, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
+        initTimeout(60 * sessionDurationLimit, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
     } else {
         updateMenuForAnonymous();
     }
@@ -58,7 +63,6 @@ async function Init_UI() {
     await showPosts();
     start_Periodic_Refresh();
 
-    /* determine if elem is in viewport */
     $.fn.isInViewport = function () { /* insert a new method to jquery sizzle */
         var elementTop = $(this).offset().top;
         var elementBottom = elementTop + $(this).outerHeight();
@@ -71,22 +75,28 @@ async function Init_UI() {
 }
 
 /////////////////////////// User permissions ////////////////////////////////////////////////////////////
-
 function canCreatePost(user) {
     if (!user) return false;
-    return user.Authorizations.writeAccess >= 1 || user.isSuper;
+    if (user.isAdmin) return false;
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return user.isSuper || wa >= 2;
 }
 
 function canEditPost(user, post) {
-    if (!user) return false;
-    if (user.isAdmin) return false; // Admins can only manage users
-    return post.OwnerId === user.Id;
+    if (!user || !post) return false;
+    if (user.isAdmin) return false;
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return post.OwnerId === user.Id && (user.isSuper || wa >= 2);
 }
 
 function canDeletePost(user, post) {
-    if (!user) return false;
-    if (user.isAdmin) return true; // Admins can delete any post
-    return post.OwnerId === user.Id;
+    if (!user || !post) return false;
+    if (user.isAdmin) return true;
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return post.OwnerId === user.Id && (user.isSuper || wa >= 2);
 }
 
 function canLikePost(user) {
@@ -96,6 +106,7 @@ function canLikePost(user) {
 function canManageUsers(user) {
     return user != null && user.isAdmin;
 }
+
 
 /////////////////////////// Menu management ////////////////////////////////////////////////////////////
 
@@ -118,7 +129,6 @@ function updateMenuForUser(user) {
 function installKeywordsOnkeyupEvent() {
     $("#searchKeys").on('keyup', function () {
         clearTimeout(keywordsOnchangeTimger);
-        /* Delay search by keywordsOnchangeDelay seconds in order to limit requests to server */
         keywordsOnchangeTimger = setTimeout(() => {
             cleanSearchKeywords();
             showPosts(true);
@@ -129,7 +139,6 @@ function installKeywordsOnkeyupEvent() {
     });
 }
 function cleanSearchKeywords() {
-    /* Keep only keywords of 3 characters or more */
     let keywords = $("#searchKeys").val().trim().split(' ');
     let cleanedKeywords = "";
     keywords.forEach(keyword => {
@@ -229,46 +238,93 @@ function showAbout() {
 
 //////////////////////////// Posts rendering /////////////////////////////////////////////////////////////
 
-function start_Periodic_Refresh() {
+let periodicRefreshHandle = null;
+let refreshInProgress = false;
 
-    setInterval(async () => {
-        if (!periodic_Refresh_paused) {
-            updateVisiblePosts();
-            let etag = await Posts_API.HEAD();
-            if (currentETag != etag)
+function start_Periodic_Refresh() {
+    if (periodicRefreshHandle) clearInterval(periodicRefreshHandle);
+
+    periodicRefreshHandle = setInterval(async () => {
+        if (refreshInProgress) return;
+        refreshInProgress = true;
+
+        try {
+            const stillValid = await validateSessionStillValid();
+            if (!stillValid) return;
+
+            if (typeof syncLoggedUserPermissions === "function") {
+                await syncLoggedUserPermissions();
+                if (!Accounts_API.isLoggedIn()) return; 
+            }
+
+            if (periodic_Refresh_paused) return;
+
+
+            const etag = await Posts_API.HEAD();
+            if (Posts_API.error || !etag) return;
+
+            if (currentETag !== "" && currentETag !== etag) {
                 currentETag = etag;
+                await postsPanel.update(false);
+            } else if (currentETag === "") {
+                currentETag = etag;
+            }
+            
+            updateVisiblePosts();
+        } finally {
+            refreshInProgress = false;
         }
-    },
-        periodicRefreshPeriod * 1000);
+    }, periodicRefreshPeriod * 1000);
 }
 
-function updateVisiblePosts() {
-    $('.post').each(async function () {
+async function updateVisiblePosts() {
+    const jobs = [];
+
+    $('.post').each(function () {
         if ($(this).isInViewport()) {
-            updatePost($(this).attr('id'));
+            const id = $(this).attr('id');
+            if (id) jobs.push(updatePost(id));
         }
-    })
-    compileCategories();
+    });
+
+    await Promise.allSettled(jobs);
 }
 
 async function updatePost(postId) {
-    let postElem = $(`.post[id=${postId}]`);
-    let response = await Posts_API.Get(postId);
-    if (!Posts_API.error) {
-        let post = response.data;
-        let wasExtended = $(`.postTextContainer[postid=${postId}]`).hasClass("showExtra");
-        postElem.replaceWith(renderPost(post));
-        if (wasExtended) {
-            $(`.postTextContainer[postid=${postId}]`).addClass('showExtra');
-            $(`.postTextContainer[postid=${postId}]`).removeClass('hideExtra');
-            $(`.moreText[postid=${postId}]`).hide();
-            $(`.lessText[postid=${postId}]`).show();
+    // ✅ IMPORTANT: guillemets sinon un id qui commence par un chiffre/contient des tirets peut bugger
+    const postElem = $(`.post[id="${postId}"]`);
+
+    const response = await Posts_API.Get(postId);
+
+    // ✅ Si supprimé -> on retire du DOM et on arrête
+    if (Posts_API.error || !response) {
+        if (Posts_API.currentStatus === 404) {
+            postElem.remove();
         }
+        return;
     }
+
+    const post = response.data;
+    if (!post) {
+        postElem.remove();
+        return;
+    }
+
+    const wasExtended = $(`.postTextContainer[postid="${postId}"]`).hasClass("showExtra");
+    postElem.replaceWith(renderPost(post));
+
+    if (wasExtended) {
+        $(`.postTextContainer[postid="${postId}"]`).addClass('showExtra').removeClass('hideExtra');
+        $(`.moreText[postid="${postId}"]`).hide();
+        $(`.lessText[postid="${postId}"]`).show();
+    }
+
     linefeeds_to_Html_br(".postText");
     highlightKeywords();
     attach_Posts_UI_Events_Callback();
 }
+
+
 async function renderPosts(container, queryString) {
     addWaitingGif();
 
@@ -350,7 +406,6 @@ function renderPost(post) {
 }
 
 function renderLikes(post, user) {
-    // Don't show likes UI if user is not logged in
     if (!user) {
         return '';
     }
@@ -458,7 +513,6 @@ function updateDropDownMenu() {
     let user = Accounts_API.getLoggedUser();
     DDMenu.empty();
 
-    // User section for logged in users
     if (user) {
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout userHeader">
@@ -470,7 +524,6 @@ function updateDropDownMenu() {
         `));
         DDMenu.append($(`<div class="dropdown-divider"></div>`));
 
-        // User management for admins
         if (canManageUsers(user)) {
             DDMenu.append($(`
                 <div class="dropdown-item menuItemLayout" id="manageUsersCmd">
@@ -479,14 +532,12 @@ function updateDropDownMenu() {
             `));
         }
 
-        // Profile modification
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout" id="modifyProfileCmd">
                 <i class="menuIcon fa fa-user-edit mx-2"></i> Modifier votre profil
             </div>
         `));
 
-        // Logout
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout" id="logoutCmd">
                 <i class="menuIcon fa fa-sign-out-alt mx-2"></i> Déconnexion
@@ -494,7 +545,6 @@ function updateDropDownMenu() {
         `));
         DDMenu.append($(`<div class="dropdown-divider"></div>`));
     } else {
-        // Login option for anonymous users
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout" id="loginCmd">
                 <i class="menuIcon fa fa-sign-in-alt mx-2"></i> Connexion
@@ -567,7 +617,6 @@ function attach_Posts_UI_Events_Callback() {
 
     linefeeds_to_Html_br(".postText");
 
-    // attach icon command click event callback
     $(".editCmd").off();
     $(".editCmd").on("click", function () {
         timeout();
@@ -618,12 +667,12 @@ function linefeeds_to_Html_br(selector) {
         postText.html(str.replace(regex, "<br>"));
     })
 }
+
 function highlight(text, elem) {
     text = text.trim();
     if (text.length >= minKeywordLenth) {
         var innerHTML = elem.innerHTML;
         let startIndex = 0;
-
         while (startIndex < innerHTML.length) {
             var normalizedHtml = innerHTML.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             var index = normalizedHtml.indexOf(text, startIndex);
@@ -652,6 +701,30 @@ function highlightKeywords() {
                     highlight(key, text);
                 })
             })
+        }
+    }
+}
+
+async function purgeUserPostsAndLikes(userId) {
+    let userLikes = await PostLikes_API.GetQuery("?UserId=" + userId);
+    if (userLikes) {
+        for (const like of userLikes) {
+            await PostLikes_API.Delete(like.Id);
+        }
+    }
+
+    while (true) {
+        let resp = await Posts_API.GetQuery(`?OwnerId=${userId}&limit=50&offset=0`);
+        if (!resp || !resp.data || resp.data.length === 0) break;
+
+        for (const post of resp.data) {
+            let postLikes = await PostLikes_API.getPostLikes(post.Id);
+            if (postLikes) {
+                for (const pl of postLikes) {
+                    await PostLikes_API.Delete(pl.Id);
+                }
+            }
+            await Posts_API.Delete(post.Id);
         }
     }
 }
@@ -698,6 +771,7 @@ function renderLoginForm(message = "") {
 
         if (result && result.Access_token) {
             Accounts_API.setBearerToken(result.Access_token);
+            result.User.Password = password;
             Accounts_API.setLoggedUser(result.User);
 
             if (result.User.VerifyCode !== "verified") {
@@ -712,8 +786,10 @@ function renderLoginForm(message = "") {
                 $('#emailError').text('Courriel d\'utilisateur introuvable');
             } else if (Accounts_API.currentStatus === 482) {
                 $('#passwordError').text('Mot de passe incorrecte');
-            } else if (Accounts_API.currentStatus === 481) {
-                renderLoginForm('Compte bloqué par l\'administrateur');
+            } else if (Accounts_API.currentStatus === 403 || Accounts_API.currentStatus === 405) {
+                sessionStorage.removeItem("bearerToken");
+                sessionStorage.removeItem("user");
+                renderLoginForm("Compte bloqué par l'administrateur");
             } else if (Accounts_API.currentStatus === 0) {
                 renderLoginForm('Le serveur ne répond pas');
             } else {
@@ -879,11 +955,16 @@ function renderModifyProfileForm() {
 
                 <label>Mot de passe</label>
                 <input type="password" id="modifyPassword" class="form-control"
-                    placeholder="Mot de passe">
+                    placeholder="Mot de passe" required
+                        RequireMessage="Veuillez entrer votre mot de passe"
+                        InvalidMessage="Le mot de passe doit contenir au moins 6 caractères">
 
                 <input type="password" id="modifyPasswordVerify" class="form-control MatchedInput"
-                    matchedInputId="modifyPassword"
-                    placeholder="Vérification">
+                        matchedInputId="modifyPassword"
+                        placeholder="Vérification" required
+                        RequireMessage="Veuillez vérifier votre mot de passe"
+                         InvalidMessage="Les mots de passe ne correspondent pas">
+
 
                 <label>Nom</label>
                 <input type="text" id="modifyName" class="form-control"
@@ -916,17 +997,14 @@ function renderModifyProfileForm() {
             Name: $('#modifyName').val(),
             Avatar: $('#modifyAvatar').val()
         };
-
-        let password = $('#modifyPassword').val();
-        if (password) {
-            userData.Password = password;
-        }
+        userData.Password = $('#modifyPassword').val();
 
         let emailChanged = userData.Email !== user.Email;
 
         let result = await Accounts_API.modify(userData);
 
         if (result) {
+            result.Password = userData.Password ?? user.Password; 
             if (emailChanged) {
                 popupMessage("Votre profil a été modifié. Veuillez vérifier votre nouveau courriel.");
                 Accounts_API.setLoggedUser(result);
@@ -964,6 +1042,8 @@ function renderDeleteAccountConfirm(user) {
     `);
 
     $('#confirmDeleteBtn').on("click", async function () {
+        await purgeUserPostsAndLikes(user.Id);
+
         let result = await Accounts_API.remove(user.Id);
         if (result) {
             noTimeout();
@@ -973,6 +1053,7 @@ function renderDeleteAccountConfirm(user) {
             popupMessage("Erreur lors de la suppression du compte");
         }
     });
+
 
     $('#cancelDeleteBtn').on("click", function () {
         renderModifyProfileForm();
@@ -985,20 +1066,27 @@ async function renderUserManagementForm() {
     $("#viewTitle").text("Gestion des usagers");
     $('#commit').hide();
     $('#abort').show();
-    $("#form").show();
-    $("#form").empty();
+    $("#form").show().empty();
 
-    // Fetch all users
-    let response = await fetch(Accounts_API.serverHost() + "/api/accounts", {
-        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
-    });
+    if (typeof syncLoggedUserPermissions === "function") {
+        await syncLoggedUserPermissions();
+    }
+
+    const response = await authFetch(Accounts_API.serverHost() + "/api/accounts");
+
+    if (!response) return;
+
+    if (response.status === 401 || response.status === 403) {
+        await forceLocalLogout("Accès refusé. Veuillez vous reconnecter.");
+        return;
+    }
 
     if (!response.ok) {
         popupMessage("Erreur lors du chargement des usagers");
         return;
     }
 
-    let users = await response.json();
+    const users = await response.json();
 
     $("#form").append(`
         <div class="userManagementForm">
@@ -1007,14 +1095,13 @@ async function renderUserManagementForm() {
         </div>
     `);
 
-    // Render each user
     users.forEach(user => {
         $("#usersList").append(renderUserManagementRow(user));
     });
 
-    // Attach events
     attachUserManagementEvents();
 }
+
 
 function renderUserManagementRow(user) {
     let userTypeLabel = '';
@@ -1048,13 +1135,13 @@ function renderUserManagementRow(user) {
             </div>
             <div class="userActions">
                 <button class="btn btn-sm btn-primary changePermissionBtn" userId="${user.Id}" title="Changer les permissions">
-                    <i class="fa fa-user-gear"></i> Permissions
+                     Permissions
                 </button>
                 <button class="btn btn-sm btn-warning blockUserBtn" userId="${user.Id}" title="${blockLabel}">
-                    <i class="fa ${blockIcon}"></i> ${blockLabel}
+                     ${blockLabel}
                 </button>
                 <button class="btn btn-sm btn-danger deleteUserBtn" userId="${user.Id}" title="Effacer">
-                    <i class="fa fa-trash"></i> Effacer
+                     Effacer
                 </button>
             </div>
         </div>
@@ -1093,7 +1180,6 @@ function attachUserManagementEvents() {
 async function changeUserPermissions(userId) {
     timeout();
 
-    // Fetch current user data
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1105,7 +1191,6 @@ async function changeUserPermissions(userId) {
 
     let user = await response.json();
 
-    // Use the promote endpoint to cycle permissions
     let promoteResponse = await fetch(Accounts_API.serverHost() + "/accounts/promote", {
         method: "POST",
         headers: {
@@ -1116,14 +1201,11 @@ async function changeUserPermissions(userId) {
     });
 
     if (promoteResponse.ok) {
-        // Get updated user data
         let updatedUser = await promoteResponse.json();
 
-        // Partial refresh: only update this user's row
         let userRowHtml = renderUserManagementRow(updatedUser);
         $(`.userRow[userId="${userId}"]`).replaceWith(userRowHtml);
 
-        // Re-attach events to the new row
         attachUserManagementEvents();
     } else {
         popupMessage("Erreur lors de la modification des permissions");
@@ -1133,7 +1215,6 @@ async function changeUserPermissions(userId) {
 async function toggleBlockUser(userId) {
     timeout();
 
-    // Fetch current user data
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1145,7 +1226,6 @@ async function toggleBlockUser(userId) {
 
     let user = await response.json();
 
-    // Use the toggleblock endpoint
     let toggleResponse = await fetch(Accounts_API.serverHost() + "/accounts/toggleblock", {
         method: "POST",
         headers: {
@@ -1156,14 +1236,11 @@ async function toggleBlockUser(userId) {
     });
 
     if (toggleResponse.ok) {
-        // Get updated user data
         let updatedUser = await toggleResponse.json();
 
-        // Partial refresh: only update this user's row
         let userRowHtml = renderUserManagementRow(updatedUser);
         $(`.userRow[userId="${userId}"]`).replaceWith(userRowHtml);
 
-        // Re-attach events to the new row
         attachUserManagementEvents();
     } else {
         popupMessage("Erreur lors du blocage/déblocage");
@@ -1171,7 +1248,6 @@ async function toggleBlockUser(userId) {
 }
 
 async function confirmDeleteUser(userId) {
-    // Fetch user data for confirmation
     let response = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
@@ -1203,19 +1279,20 @@ async function confirmDeleteUser(userId) {
         </div>
     `);
 
-    $('#confirmDeleteUserBtn').on("click", async function () {
-        let deleteResponse = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
-            method: "DELETE",
-            headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
-        });
+$('#confirmDeleteUserBtn').one("click", async function () {
+    await purgeUserPostsAndLikes(userId);
 
-        if (deleteResponse.ok) {
-            await renderUserManagementForm();
-        } else {
-            popupMessage("Erreur lors de la suppression de l'usager");
-        }
+    let deleteResponse = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
     });
 
+    if (deleteResponse.ok) {
+        await renderUserManagementForm();
+    } else {
+        popupMessage("Erreur lors de la suppression de l'usager");
+    }
+});
     $('#cancelDeleteUserBtn').on("click", async function () {
         await renderUserManagementForm();
     });
@@ -1229,6 +1306,7 @@ async function renderEditPostForm(id) {
     let response = await Posts_API.Get(id)
     if (!Posts_API.error) {
         let Post = response.data;
+
         if (Post !== null)
             renderPostForm(Post);
         else
@@ -1239,43 +1317,56 @@ async function renderEditPostForm(id) {
     removeWaitingGif();
 }
 async function renderDeletePostForm(id) {
-    let response = await Posts_API.Get(id)
-    if (!Posts_API.error) {
-        let post = response.data;
-        if (post !== null) {
-            let date = convertToFrenchDate(UTC_To_Local(post.Date));
-            $("#form").append(`
-                <div class="post" id="${post.Id}">
-                <div class="postHeader">  ${post.Category} </div>
-                <div class="postTitle ellipsis"> ${post.Title} </div>
-                <img class="postImage" src='${post.Image}'/>
-                <div class="postDate"> ${date} </div>
-                <div class="postTextContainer showExtra">
-                    <div class="postText">${post.Text}</div>
-                </div>
-            `);
-            linefeeds_to_Html_br(".postText");
-            // attach form buttons click event callback
-            $('#commit').on("click", async function () {
-                await Posts_API.Delete(post.Id);
-                if (!Posts_API.error) {
-                    await showPosts();
-                }
-                else {
-                    console.log(Posts_API.currentHttpError)
-                    showError(Posts_API.currentHttpError);
-                }
-            });
-            $('#cancel').on("click", async function () {
-                await showPosts();
-            });
+    $("#form").empty();
 
-        } else {
-            showError("Post introuvable!");
-        }
-    } else
+    $('#commit').off('click');
+    $('#abort').off('click');
+
+    let response = await Posts_API.Get(id);
+    if (Posts_API.error) {
         showError(Posts_API.currentHttpError);
+        return;
+    }
+
+    let post = response.data;
+
+
+    if (!post) {
+        showError("Post introuvable!");
+        return;
+    }
+
+    let date = convertToFrenchDate(UTC_To_Local(post.Date));
+
+    $("#form").append(`
+        <div class="post" id="${post.Id}">
+            <div class="postHeader">${post.Category}</div>
+            <div class="postTitle ellipsis">${post.Title}</div>
+            <img class="postImage" src="${post.Image}"/>
+            <div class="postDate">${date}</div>
+            <div class="postTextContainer showExtra">
+                <div class="postText">${post.Text}</div>
+            </div>
+        </div>
+        <div class="formHint">Clique ✔ pour confirmer la suppression.</div>
+    `);
+
+    linefeeds_to_Html_br("#form .postText");
+
+    $('#commit').one("click", async function () {
+        await Posts_API.Delete(post.Id);
+        if (!Posts_API.error) {
+            await showPosts(true);
+        } else {
+            showError(Posts_API.currentHttpError);
+        }
+    });
+
+    $('#abort').one("click", async function () {
+        await showPosts();
+    });
 }
+
 function newPost() {
     let Post = {};
     Post.Id = 0;
@@ -1348,12 +1439,13 @@ function renderPostForm(post = null) {
     if (create) $("#keepDateControl").hide();
 
     initImageUploaders();
-    initFormValidation(); // important do to after all html injection!
+    initFormValidation();
 
-    $("#commit").click(function () {
-        $("#commit").off();
-        return $('#savePost').trigger("click");
+    $("#commit").off("click").on("click", function (e) {
+        e.preventDefault();
+        document.getElementById("savePost").click(); 
     });
+
     $('#postForm').on("submit", async function (event) {
         event.preventDefault();
         let post = getFormData($("#postForm"));
@@ -1375,10 +1467,8 @@ function renderPostForm(post = null) {
     });
 }
 function getFormData($form) {
-    // prevent html injections
     const removeTag = new RegExp("(<[a-zA-Z0-9]+>)|(</[a-zA-Z0-9]+>)", "g");
     var jsonObject = {};
-    // grab data from all controls
     $.each($form.serializeArray(), (index, control) => {
         jsonObject[control.name] = control.value.replace(removeTag, "");
     });
@@ -1422,3 +1512,134 @@ async function renderError(message) {
         renderLoginForm();
     });
 }
+
+async function forceLocalLogout(message = "Votre compte a été supprimé par un administrateur.") {
+    sessionStorage.removeItem("bearerToken");
+    sessionStorage.removeItem("user");
+
+    noTimeout();
+    updateMenuForAnonymous();
+    await showPosts(true);
+
+    popupMessage(message);
+}
+
+let missingUserCount = 0;
+
+async function validateSessionStillValid() {
+    if (!Accounts_API.isLoggedIn()) return true;
+
+    const user = Accounts_API.getLoggedUser();
+    if (!user?.Email) return true;
+
+    const checkExists = async () => {
+        const res = await Accounts_API.conflict(user.Email, 0);
+        if (res === null || Accounts_API.error) return null;
+        return (res === true) || (res?.conflict === true) || (res?.Conflict === true);
+    };
+
+    const exists1 = await checkExists();
+    if (exists1 === null) return true;
+    if (exists1 === true) return true;
+
+    await new Promise(r => setTimeout(r, 200));
+    const exists2 = await checkExists();
+    if (exists2 === null) return true;
+
+    if (exists2 === false) {
+        await forceLocalLogout("Votre compte a été supprimé par un administrateur.");
+        return false;
+    }
+    return true;
+}
+
+
+
+
+let permissionPollLast = 0;
+const permissionPollMs = 8000;
+let permissionSyncRunning = false;
+
+function permissionSignature(u) {
+    if (!u) return "";
+    return JSON.stringify({
+        Id: u.Id,
+        wa: u.Authorizations?.writeAccess ?? 0,
+        ra: u.Authorizations?.readAccess ?? 0,
+        isAdmin: !!u.isAdmin,
+        isSuper: !!u.isSuper,
+        isBlocked: !!u.isBlocked
+    });
+}
+
+async function syncLoggedUserPermissions() {
+    if (!Accounts_API.isLoggedIn() || permissionSyncRunning) return;
+
+    const now = Date.now();
+    if (now - permissionPollLast < permissionPollMs) return;
+    permissionPollLast = now;
+
+    const current = Accounts_API.getLoggedUser();
+    if (!current?.Email || !current?.Password) return;
+
+    permissionSyncRunning = true;
+    try {
+        const res = await Accounts_API.login(current.Email, current.Password);
+
+        if (!res?.Access_token || !res?.User) {
+            const err = (Accounts_API.currentHttpError || "").toLowerCase();
+
+            if (Accounts_API.currentStatus === 481 || err.includes("not found")) {
+                await forceLocalLogout("Votre compte a été supprimé par un administrateur.");
+                return;
+            }
+
+            if (Accounts_API.currentStatus === 403||Accounts_API.currentStatus === 405 || err.includes("blocked") || err.includes("bloqu")) {
+                await forceLocalLogout("Votre compte a été bloqué par un administrateur.");
+                return;
+            }
+
+            if (Accounts_API.currentStatus === 482) {
+                await forceLocalLogout("Session invalide. Veuillez vous reconnecter.");
+                return;
+            }
+
+            return;
+        }
+
+        res.User.Password = current.Password;
+        if (!res.User.Avatar) res.User.Avatar = current.Avatar;
+
+        Accounts_API.setBearerToken(res.Access_token);
+
+        if (permissionSignature(res.User) !== permissionSignature(current)) {
+            Accounts_API.setLoggedUser(res.User);
+            updateMenuForUser(res.User);
+            updateVisiblePosts(); 
+        }
+    } finally {
+        permissionSyncRunning = false;
+    }
+}
+
+async function authFetch(url, options = {}) {
+    const token = Accounts_API.getBearerToken(); // mieux que sessionStorage direct
+    if (!token) {
+        renderLoginForm("Session invalide. Veuillez vous reconnecter.");
+        return null;
+    }
+
+    const headers = new Headers(options.headers || {});
+    headers.set("Authorization", "Bearer " + token);
+
+    return fetch(url, { ...options, headers });
+}
+
+
+
+
+
+
+
+
+
