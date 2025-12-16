@@ -1135,13 +1135,13 @@ function renderUserManagementRow(user) {
             </div>
             <div class="userActions">
                 <button class="btn btn-sm btn-primary changePermissionBtn" userId="${user.Id}" title="Changer les permissions">
-                    <i class="fa fa-user-gear"></i> Permissions
+                     Permissions
                 </button>
                 <button class="btn btn-sm btn-warning blockUserBtn" userId="${user.Id}" title="${blockLabel}">
-                    <i class="fa ${blockIcon}"></i> ${blockLabel}
+                     ${blockLabel}
                 </button>
                 <button class="btn btn-sm btn-danger deleteUserBtn" userId="${user.Id}" title="Effacer">
-                    <i class="fa fa-trash"></i> Effacer
+                     Effacer
                 </button>
             </div>
         </div>
