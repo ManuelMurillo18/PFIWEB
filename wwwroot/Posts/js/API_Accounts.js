@@ -51,23 +51,37 @@ class Accounts_API {
             });
         });
     }
-
-    static async login(email, password) {
-        this.initHttpState();
-        return new Promise(resolve => {
-            $.ajax({
-                url: this.TOKEN_API_URL(),
-                type: "POST",
-                contentType: 'application/json',
-                data: JSON.stringify({ Email: email, Password: password }),
-                success: (data) => { resolve(data); },
-                error: (xhr) => {
-                    this.setHttpErrorState(xhr);
-                    resolve(null);
-                }
-            });
+static async login(email, password) {
+    this.initHttpState();
+    try {
+        const resp = await fetch(this.TOKEN_API_URL(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ Email: email, Password: password })
         });
+
+        const raw = await resp.text();
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+
+        if (resp.ok) return data;
+
+        this.error = true;
+        this.currentStatus = resp.status;
+        this.currentHttpError =
+            (data && (data.error_description || data.message || data.error)) ||
+            resp.statusText;
+
+        return null;
+    } catch {
+        this.error = true;
+        this.currentStatus = 0;
+        this.currentHttpError = "Service introuvable";
+        return null;
     }
+}
+
+
 
     static async logout(userId) {
         this.initHttpState();
@@ -137,28 +151,12 @@ static async conflict(email, id = 0) {
             success: (data) => resolve(data),
             error: (xhr) => {
                 this.setHttpErrorState(xhr);
-                resolve(null); // null = erreur serveur (pas "compte supprimé")
+                resolve(null);
             }
         });
     });
 }
 
-
-
-/*     static async conflict(email) {
-        this.initHttpState();
-        return new Promise(resolve => {
-            $.ajax({
-                url: this.ACCOUNTS_API_URL() + "/conflict?Email=" + email,
-                type: "GET",
-                success: (data) => { resolve(data); },
-                error: (xhr) => {
-                    this.setHttpErrorState(xhr);
-                    resolve(false);
-                }
-            });
-        });
-    } */
 
     static async getById(userId) {
         this.initHttpState();

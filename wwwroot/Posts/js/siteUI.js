@@ -19,6 +19,8 @@ let waiting = null;
 let showKeywords = false;
 let keywordsOnchangeTimger = null;
 
+const sessionDurationLimit = 2; // in minutes
+
 
 
 Init_UI();
@@ -29,7 +31,7 @@ async function Init_UI() {
     if (Accounts_API.isLoggedIn()) {
         let user = Accounts_API.getLoggedUser();
         updateMenuForUser(user);
-        initTimeout(600, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
+        initTimeout(60 * sessionDurationLimit, () => { renderLoginForm("Votre session est expirée. Veuillez vous reconnecter."); });
     } else {
         updateMenuForAnonymous();
     }
@@ -61,7 +63,6 @@ async function Init_UI() {
     await showPosts();
     start_Periodic_Refresh();
 
-    /* determine if elem is in viewport */
     $.fn.isInViewport = function () { /* insert a new method to jquery sizzle */
         var elementTop = $(this).offset().top;
         var elementBottom = elementTop + $(this).outerHeight();
@@ -107,32 +108,6 @@ function canManageUsers(user) {
 }
 
 
-
-/* function canCreatePost(user) {
-    if (!user) return false;
-    return user.Authorizations.writeAccess >= 1 || user.isSuper;
-}
-
-function canEditPost(user, post) {
-    if (!user) return false;
-    if (user.isAdmin) return false; // Admins can only manage users
-    return post.OwnerId === user.Id;
-}
-
-function canDeletePost(user, post) {
-    if (!user) return false;
-    if (user.isAdmin) return true; // Admins can delete any post
-    return post.OwnerId === user.Id;
-}
-
-function canLikePost(user) {
-    return user != null && !user.isBlocked;
-}
-
-function canManageUsers(user) {
-    return user != null && user.isAdmin;
-} */
-
 /////////////////////////// Menu management ////////////////////////////////////////////////////////////
 
 function updateMenuForAnonymous() {
@@ -154,7 +129,6 @@ function updateMenuForUser(user) {
 function installKeywordsOnkeyupEvent() {
     $("#searchKeys").on('keyup', function () {
         clearTimeout(keywordsOnchangeTimger);
-        /* Delay search by keywordsOnchangeDelay seconds in order to limit requests to server */
         keywordsOnchangeTimger = setTimeout(() => {
             cleanSearchKeywords();
             showPosts(true);
@@ -165,7 +139,6 @@ function installKeywordsOnkeyupEvent() {
     });
 }
 function cleanSearchKeywords() {
-    /* Keep only keywords of 3 characters or more */
     let keywords = $("#searchKeys").val().trim().split(' ');
     let cleanedKeywords = "";
     keywords.forEach(keyword => {
@@ -265,10 +238,6 @@ function showAbout() {
 
 //////////////////////////// Posts rendering /////////////////////////////////////////////////////////////
 
-
-
-// Ajoute ça (une seule fois) avec tes variables globales
-
 let periodicRefreshHandle = null;
 let refreshInProgress = false;
 
@@ -280,131 +249,82 @@ function start_Periodic_Refresh() {
         refreshInProgress = true;
 
         try {
-            // ✅ Déconnexion auto si compte supprimé
-            await validateSessionStillValid();
+            const stillValid = await validateSessionStillValid();
+            if (!stillValid) return;
 
-            // Le reste (posts) seulement si on est sur la page posts
+            if (typeof syncLoggedUserPermissions === "function") {
+                await syncLoggedUserPermissions();
+                if (!Accounts_API.isLoggedIn()) return; 
+            }
+
             if (periodic_Refresh_paused) return;
 
-            updateVisiblePosts();
 
-            const probe = await Posts_API.GetQuery("?limit=1&offset=0&sort=-date");
-            if (Posts_API.error || !probe) return;
+            const etag = await Posts_API.HEAD();
+            if (Posts_API.error || !etag) return;
 
-            const newETag = probe.ETag ?? probe.eTag ?? probe.etag;
-            if (!newETag) return;
-
-            if (currentETag !== "" && currentETag !== newETag) {
-                currentETag = newETag;
+            if (currentETag !== "" && currentETag !== etag) {
+                currentETag = etag;
                 await postsPanel.update(false);
             } else if (currentETag === "") {
-                currentETag = newETag;
+                currentETag = etag;
             }
+            
+            updateVisiblePosts();
         } finally {
             refreshInProgress = false;
         }
     }, periodicRefreshPeriod * 1000);
 }
 
-/* function start_Periodic_Refresh() {
-    // évite plusieurs timers
-    if (periodicRefreshHandle) clearInterval(periodicRefreshHandle);
+async function updateVisiblePosts() {
+    const jobs = [];
 
-    periodicRefreshHandle = setInterval(async () => {
-        if (periodic_Refresh_paused || refreshInProgress) return;
-
-        refreshInProgress = true;
-        try {
-            // (optionnel) seulement si ces fonctions existent chez toi
-            if (typeof validateSessionStillValid === "function")
-                await validateSessionStillValid();
-
-            if (typeof syncLoggedUserPermissions === "function")
-                await syncLoggedUserPermissions();
-
-            // refresh likes/boutons visibles
-            updateVisiblePosts();
-
-            // refresh de la LISTE si changements détectés
-            const probe = await Posts_API.GetQuery("?limit=1&offset=0&sort=-date");
-            if (Posts_API.error || !probe) return;
-
-            const newETag = probe.ETag ?? probe.eTag ?? probe.etag;
-            if (!newETag) return;
-
-            if (currentETag !== "" && currentETag !== newETag) {
-                currentETag = newETag;
-                await postsPanel.update(false); // ✅ met à jour la liste sans reset scroll
-            } else if (currentETag === "") {
-                currentETag = newETag;
-            }
-        } finally {
-            refreshInProgress = false;
-        }
-    }, periodicRefreshPeriod * 1000);
-} */
-
-
-
-/* function start_Periodic_Refresh() {
-    if (periodicRefreshHandle) clearInterval(periodicRefreshHandle);
-
-    periodicRefreshHandle = setInterval(async () => {
-        if (periodic_Refresh_paused || periodicTickRunning) return;
-
-        periodicTickRunning = true;
-        try {
-            await syncLoggedUserPermissions();
-
-            // garde ton refresh posts existant
-            updateVisiblePosts();
-        } finally {
-            periodicTickRunning = false;
-        }
-    }, periodicRefreshPeriod * 1000);
-} */
-
-
-/* function start_Periodic_Refresh() {
-
-    setInterval(async () => {
-        if (!periodic_Refresh_paused) {
-            updateVisiblePosts();
-            let etag = await Posts_API.HEAD();
-            if (currentETag != etag)
-                currentETag = etag;
-        }
-    },
-        periodicRefreshPeriod * 1000);
-} */
-
-function updateVisiblePosts() {
-    $('.post').each(async function () {
+    $('.post').each(function () {
         if ($(this).isInViewport()) {
-            updatePost($(this).attr('id'));
+            const id = $(this).attr('id');
+            if (id) jobs.push(updatePost(id));
         }
-    })
-    compileCategories();
+    });
+
+    await Promise.allSettled(jobs);
 }
 
 async function updatePost(postId) {
-    let postElem = $(`.post[id=${postId}]`);
-    let response = await Posts_API.Get(postId);
-    if (!Posts_API.error) {
-        let post = response.data;
-        let wasExtended = $(`.postTextContainer[postid=${postId}]`).hasClass("showExtra");
-        postElem.replaceWith(renderPost(post));
-        if (wasExtended) {
-            $(`.postTextContainer[postid=${postId}]`).addClass('showExtra');
-            $(`.postTextContainer[postid=${postId}]`).removeClass('hideExtra');
-            $(`.moreText[postid=${postId}]`).hide();
-            $(`.lessText[postid=${postId}]`).show();
+    // ✅ IMPORTANT: guillemets sinon un id qui commence par un chiffre/contient des tirets peut bugger
+    const postElem = $(`.post[id="${postId}"]`);
+
+    const response = await Posts_API.Get(postId);
+
+    // ✅ Si supprimé -> on retire du DOM et on arrête
+    if (Posts_API.error || !response) {
+        if (Posts_API.currentStatus === 404) {
+            postElem.remove();
         }
+        return;
     }
+
+    const post = response.data;
+    if (!post) {
+        postElem.remove();
+        return;
+    }
+
+    const wasExtended = $(`.postTextContainer[postid="${postId}"]`).hasClass("showExtra");
+    postElem.replaceWith(renderPost(post));
+
+    if (wasExtended) {
+        $(`.postTextContainer[postid="${postId}"]`).addClass('showExtra').removeClass('hideExtra');
+        $(`.moreText[postid="${postId}"]`).hide();
+        $(`.lessText[postid="${postId}"]`).show();
+    }
+
     linefeeds_to_Html_br(".postText");
     highlightKeywords();
     attach_Posts_UI_Events_Callback();
 }
+
+
 async function renderPosts(container, queryString) {
     addWaitingGif();
 
@@ -486,7 +406,6 @@ function renderPost(post) {
 }
 
 function renderLikes(post, user) {
-    // Don't show likes UI if user is not logged in
     if (!user) {
         return '';
     }
@@ -594,7 +513,6 @@ function updateDropDownMenu() {
     let user = Accounts_API.getLoggedUser();
     DDMenu.empty();
 
-    // User section for logged in users
     if (user) {
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout userHeader">
@@ -606,7 +524,6 @@ function updateDropDownMenu() {
         `));
         DDMenu.append($(`<div class="dropdown-divider"></div>`));
 
-        // User management for admins
         if (canManageUsers(user)) {
             DDMenu.append($(`
                 <div class="dropdown-item menuItemLayout" id="manageUsersCmd">
@@ -615,14 +532,12 @@ function updateDropDownMenu() {
             `));
         }
 
-        // Profile modification
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout" id="modifyProfileCmd">
                 <i class="menuIcon fa fa-user-edit mx-2"></i> Modifier votre profil
             </div>
         `));
 
-        // Logout
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout" id="logoutCmd">
                 <i class="menuIcon fa fa-sign-out-alt mx-2"></i> Déconnexion
@@ -630,7 +545,6 @@ function updateDropDownMenu() {
         `));
         DDMenu.append($(`<div class="dropdown-divider"></div>`));
     } else {
-        // Login option for anonymous users
         DDMenu.append($(`
             <div class="dropdown-item menuItemLayout" id="loginCmd">
                 <i class="menuIcon fa fa-sign-in-alt mx-2"></i> Connexion
@@ -872,8 +786,10 @@ function renderLoginForm(message = "") {
                 $('#emailError').text('Courriel d\'utilisateur introuvable');
             } else if (Accounts_API.currentStatus === 482) {
                 $('#passwordError').text('Mot de passe incorrecte');
-            } else if (Accounts_API.currentStatus === 481) {
-                renderLoginForm('Compte bloqué par l\'administrateur');
+            } else if (Accounts_API.currentStatus === 403 || Accounts_API.currentStatus === 405) {
+                sessionStorage.removeItem("bearerToken");
+                sessionStorage.removeItem("user");
+                renderLoginForm("Compte bloqué par l'administrateur");
             } else if (Accounts_API.currentStatus === 0) {
                 renderLoginForm('Le serveur ne répond pas');
             } else {
@@ -1039,11 +955,16 @@ function renderModifyProfileForm() {
 
                 <label>Mot de passe</label>
                 <input type="password" id="modifyPassword" class="form-control"
-                    placeholder="Mot de passe">
+                    placeholder="Mot de passe" required
+                        RequireMessage="Veuillez entrer votre mot de passe"
+                        InvalidMessage="Le mot de passe doit contenir au moins 6 caractères">
 
                 <input type="password" id="modifyPasswordVerify" class="form-control MatchedInput"
-                    matchedInputId="modifyPassword"
-                    placeholder="Vérification">
+                        matchedInputId="modifyPassword"
+                        placeholder="Vérification" required
+                        RequireMessage="Veuillez vérifier votre mot de passe"
+                         InvalidMessage="Les mots de passe ne correspondent pas">
+
 
                 <label>Nom</label>
                 <input type="text" id="modifyName" class="form-control"
@@ -1076,18 +997,14 @@ function renderModifyProfileForm() {
             Name: $('#modifyName').val(),
             Avatar: $('#modifyAvatar').val()
         };
-
-        let password = $('#modifyPassword').val();
-        if (password) {
-            userData.Password = password;
-        }
+        userData.Password = $('#modifyPassword').val();
 
         let emailChanged = userData.Email !== user.Email;
 
         let result = await Accounts_API.modify(userData);
 
         if (result) {
-            result.Password = userData.Password ?? user.Password; // ✅ conserve le password
+            result.Password = userData.Password ?? user.Password; 
             if (emailChanged) {
                 popupMessage("Votre profil a été modifié. Veuillez vérifier votre nouveau courriel.");
                 Accounts_API.setLoggedUser(result);
@@ -1149,19 +1066,27 @@ async function renderUserManagementForm() {
     $("#viewTitle").text("Gestion des usagers");
     $('#commit').hide();
     $('#abort').show();
-    $("#form").show();
-    $("#form").empty();
+    $("#form").show().empty();
 
-    let response = await fetch(Accounts_API.serverHost() + "/api/accounts", {
-        headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
-    });
+    if (typeof syncLoggedUserPermissions === "function") {
+        await syncLoggedUserPermissions();
+    }
+
+    const response = await authFetch(Accounts_API.serverHost() + "/api/accounts");
+
+    if (!response) return;
+
+    if (response.status === 401 || response.status === 403) {
+        await forceLocalLogout("Accès refusé. Veuillez vous reconnecter.");
+        return;
+    }
 
     if (!response.ok) {
         popupMessage("Erreur lors du chargement des usagers");
         return;
     }
 
-    let users = await response.json();
+    const users = await response.json();
 
     $("#form").append(`
         <div class="userManagementForm">
@@ -1176,6 +1101,7 @@ async function renderUserManagementForm() {
 
     attachUserManagementEvents();
 }
+
 
 function renderUserManagementRow(user) {
     let userTypeLabel = '';
@@ -1354,10 +1280,8 @@ async function confirmDeleteUser(userId) {
     `);
 
 $('#confirmDeleteUserBtn').one("click", async function () {
-    // 1) Supprimer likes + posts liés à cet usager
     await purgeUserPostsAndLikes(userId);
 
-    // 2) Supprimer le compte
     let deleteResponse = await fetch(Accounts_API.serverHost() + "/api/accounts/" + userId, {
         method: "DELETE",
         headers: { "Authorization": "Bearer " + sessionStorage.getItem("bearerToken") }
@@ -1443,45 +1367,6 @@ async function renderDeletePostForm(id) {
     });
 }
 
-
-/* async function renderDeletePostForm(id) {
-    let response = await Posts_API.Get(id)
-    if (!Posts_API.error) {
-        let post = response.data;
-        if (post !== null) {
-            let date = convertToFrenchDate(UTC_To_Local(post.Date));
-            $("#form").append(`
-                <div class="post" id="${post.Id}">
-                <div class="postHeader">  ${post.Category} </div>
-                <div class="postTitle ellipsis"> ${post.Title} </div>
-                <img class="postImage" src='${post.Image}'/>
-                <div class="postDate"> ${date} </div>
-                <div class="postTextContainer showExtra">
-                    <div class="postText">${post.Text}</div>
-                </div>
-            `);
-            linefeeds_to_Html_br(".postText");
-            // attach form buttons click event callback
-            $('#commit').on("click", async function () {
-                await Posts_API.Delete(post.Id);
-                if (!Posts_API.error) {
-                    await showPosts();
-                }
-                else {
-                    console.log(Posts_API.currentHttpError)
-                    showError(Posts_API.currentHttpError);
-                }
-            });
-            $('#cancel').on("click", async function () {
-                await showPosts();
-            });
-
-        } else {
-            showError("Post introuvable!");
-        }
-    } else
-        showError(Posts_API.currentHttpError);
-} */
 function newPost() {
     let Post = {};
     Post.Id = 0;
@@ -1556,10 +1441,11 @@ function renderPostForm(post = null) {
     initImageUploaders();
     initFormValidation();
 
-    $("#commit").click(function () {
-        $("#commit").off();
-        return $('#savePost').trigger("click");
+    $("#commit").off("click").on("click", function (e) {
+        e.preventDefault();
+        document.getElementById("savePost").click(); 
     });
+
     $('#postForm').on("submit", async function (event) {
         event.preventDefault();
         let post = getFormData($("#postForm"));
@@ -1641,132 +1527,35 @@ async function forceLocalLogout(message = "Votre compte a été supprimé par un
 let missingUserCount = 0;
 
 async function validateSessionStillValid() {
-    if (!Accounts_API.isLoggedIn()) {
-        missingUserCount = 0;
-        return;
-    }
+    if (!Accounts_API.isLoggedIn()) return true;
 
     const user = Accounts_API.getLoggedUser();
-    if (!user?.Email) return;
+    if (!user?.Email) return true;
 
-    const res = await Accounts_API.conflict(user.Email, 0);
+    const checkExists = async () => {
+        const res = await Accounts_API.conflict(user.Email, 0);
+        if (res === null || Accounts_API.error) return null;
+        return (res === true) || (res?.conflict === true) || (res?.Conflict === true);
+    };
 
-    // Si erreur serveur/réseau -> on ne logout pas
-    if (res === null || Accounts_API.error) return;
+    const exists1 = await checkExists();
+    if (exists1 === null) return true;
+    if (exists1 === true) return true;
 
-    // conflict endpoint: true = email existe déjà (donc compte existe)
-    const exists = (res === true) || (res?.conflict === true) || (res?.Conflict === true);
+    await new Promise(r => setTimeout(r, 200));
+    const exists2 = await checkExists();
+    if (exists2 === null) return true;
 
-    if (exists) {
-        missingUserCount = 0;
-        return;
-    }
-
-    // Anti faux-positif: 2 checks négatifs de suite
-    missingUserCount++;
-    if (missingUserCount >= 2) {
-        missingUserCount = 0;
-        await forceLocalLogout();
-    }
-}
-
-
-/* async function forceLocalLogout(message = "Votre compte a été supprimé par un administrateur.") {
-    sessionStorage.removeItem("bearerToken");
-    sessionStorage.removeItem("user");
-
-    noTimeout();
-    updateMenuForAnonymous();
-    await showPosts(true);
-
-    popupMessage(message);
-}
-let sessionMissingCount = 0;
-
-async function validateSessionStillValid() {
-    if (!Accounts_API.isLoggedIn()) return;
-
-    const user = Accounts_API.getLoggedUser();
-    if (!user?.Email) return;
-
-    const res = await Accounts_API.conflict(user.Email, 0);
-
-    if (Accounts_API.error || res === null || res === undefined) return;
-
-    const exists =
-        res === true ||
-        res === "true" ||
-        res?.conflict === true ||
-        res?.Conflict === true;
-
-    if (exists) {
-        sessionMissingCount = 0;
-        return;
-    }
-
-    sessionMissingCount++;
-    if (sessionMissingCount >= 2) {
-        sessionMissingCount = 0;
+    if (exists2 === false) {
         await forceLocalLogout("Votre compte a été supprimé par un administrateur.");
+        return false;
     }
-} */
+    return true;
+}
 
 
-// -------------------------- Need to test -----------------------------
-/* let permissionPollLast = 0;
-const permissionPollMs = 8000;
-let permissionSyncRunning = false; */
 
-/* function permissionSignature(u) {
-    if (!u) return "";
-    return JSON.stringify({
-        Id: u.Id,
-        isAdmin: !!u.isAdmin,
-        isSuper: !!u.isSuper,
-        isBlocked: !!u.isBlocked,
-        writeAccess: u.Authorizations?.writeAccess ?? 0,
-        readAccess: u.Authorizations?.readAccess ?? 0
-    });
-} */
 
-/* async function syncLoggedUserPermissions() {
-  if (!Accounts_API.isLoggedIn() || permissionSyncRunning) return;
-
-  const now = Date.now();
-  if (now - permissionPollLast < permissionPollMs) return;
-  permissionPollLast = now;
-
-  const current = Accounts_API.getLoggedUser();
-  if (!current?.Email || !current?.Password) return;
-
-  permissionSyncRunning = true;
-  try {
-    const res = await Accounts_API.login(current.Email, current.Password);
-
-    // si login refuse (ex: compte bloqué), on logout local
-    if (!res?.Access_token || !res?.User) {
-      if (Accounts_API.currentStatus === 403 /* ou ton code custom ) {
-        await forceLocalLogout("Compte bloqué par l'administrateur.");
-      }
-      return;
-    }
-
-    res.User.Password = current.Password;
-    if (!res.User.Avatar) res.User.Avatar = current.Avatar;
-
-    Accounts_API.setBearerToken(res.Access_token);
-
-    if (permissionSignature(res.User) !== permissionSignature(current)) {
-      Accounts_API.setLoggedUser(res.User);
-      updateMenuForUser(res.User);
-      await showPosts(true);
-    }
-  } finally {
-    permissionSyncRunning = false;
-  }
-} */
-
-// ----------------------------------ROLLLBACK--------------------------
 let permissionPollLast = 0;
 const permissionPollMs = 8000;
 let permissionSyncRunning = false;
@@ -1797,30 +1586,55 @@ async function syncLoggedUserPermissions() {
     try {
         const res = await Accounts_API.login(current.Email, current.Password);
 
-        // Si le compte n'existe plus / est bloqué / etc.
         if (!res?.Access_token || !res?.User) {
-            // si le compte est supprimé, tu peux aussi logout local ici
-            // await forceLocalLogout("Votre session n'est plus valide.");
+            const err = (Accounts_API.currentHttpError || "").toLowerCase();
+
+            if (Accounts_API.currentStatus === 481 || err.includes("not found")) {
+                await forceLocalLogout("Votre compte a été supprimé par un administrateur.");
+                return;
+            }
+
+            if (Accounts_API.currentStatus === 403||Accounts_API.currentStatus === 405 || err.includes("blocked") || err.includes("bloqu")) {
+                await forceLocalLogout("Votre compte a été bloqué par un administrateur.");
+                return;
+            }
+
+            if (Accounts_API.currentStatus === 482) {
+                await forceLocalLogout("Session invalide. Veuillez vous reconnecter.");
+                return;
+            }
+
             return;
         }
 
-        // on conserve le password en session (tu le fais déjà au login)
         res.User.Password = current.Password;
         if (!res.User.Avatar) res.User.Avatar = current.Avatar;
 
-        // refresh token
         Accounts_API.setBearerToken(res.Access_token);
 
-        // si les permissions changent -> refresh UI
         if (permissionSignature(res.User) !== permissionSignature(current)) {
             Accounts_API.setLoggedUser(res.User);
             updateMenuForUser(res.User);
-            updateVisiblePosts(); // refresh boutons (edit/delete/like)
+            updateVisiblePosts(); 
         }
     } finally {
         permissionSyncRunning = false;
     }
 }
+
+async function authFetch(url, options = {}) {
+    const token = Accounts_API.getBearerToken(); // mieux que sessionStorage direct
+    if (!token) {
+        renderLoginForm("Session invalide. Veuillez vous reconnecter.");
+        return null;
+    }
+
+    const headers = new Headers(options.headers || {});
+    headers.set("Authorization", "Bearer " + token);
+
+    return fetch(url, { ...options, headers });
+}
+
 
 
 

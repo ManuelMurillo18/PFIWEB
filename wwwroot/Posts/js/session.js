@@ -51,7 +51,6 @@ function startCountdown() {
         currentTimeouID = setInterval(() => {
             timeLeft = timeLeft - 1;
             if (timeLeft > 0) {
-                //console.log('session timeout counting', timeLeft)
                 if (timeLeft <= 10) {
                     $(".popup").show();
                     $("#popUpMessage").text("Expiration dans " + timeLeft + " secondes");
