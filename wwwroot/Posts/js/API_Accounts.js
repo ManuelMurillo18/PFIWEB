@@ -127,20 +127,23 @@ class Accounts_API {
         });
     }
 
-    static async conflict(email) {
-        this.initHttpState();
-        return new Promise(resolve => {
-            $.ajax({
-                url: this.ACCOUNTS_API_URL() + "/conflict?Email=" + email,
-                type: "GET",
-                success: (data) => { resolve(data); },
-                error: (xhr) => {
-                    this.setHttpErrorState(xhr);
-                    resolve(false);
-                }
-            });
+    static async conflict(email, id = 0) {
+    this.initHttpState();
+    const e = encodeURIComponent(email ?? "");
+    return new Promise(resolve => {
+        $.ajax({
+            // on envoie Email + registerEmail + Id (plus compatible avec ton projet)
+            url: this.ACCOUNTS_API_URL() + `/conflict?Email=${e}&registerEmail=${e}&Id=${id}`,
+            type: "GET",
+            success: (data) => { resolve(data); },
+            error: (xhr) => {
+                this.setHttpErrorState(xhr);
+                resolve(null); // IMPORTANT: null = erreur, pas "compte supprimé"
+            }
         });
-    }
+    });
+}
+
 
     static getLoggedUser() {
         let user = sessionStorage.getItem("user");

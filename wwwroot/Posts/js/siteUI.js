@@ -72,21 +72,30 @@ async function Init_UI() {
 
 /////////////////////////// User permissions ////////////////////////////////////////////////////////////
 
+/////////////////////////// User permissions ////////////////////////////////////////////////////////////
+
 function canCreatePost(user) {
     if (!user) return false;
-    return user.Authorizations.writeAccess >= 1 || user.isSuper;
+    if (user.isAdmin) return false;              
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return user.isSuper || wa >= 2;              
 }
 
 function canEditPost(user, post) {
-    if (!user) return false;
-    if (user.isAdmin) return false; // Admins can only manage users
-    return post.OwnerId === user.Id;
+    if (!user || !post) return false;
+    if (user.isAdmin) return false;              
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return post.OwnerId === user.Id && (user.isSuper || wa >= 2);
 }
 
 function canDeletePost(user, post) {
-    if (!user) return false;
-    if (user.isAdmin) return true; // Admins can delete any post
-    return post.OwnerId === user.Id;
+    if (!user || !post) return false;
+    if (user.isAdmin) return true;               
+    if (user.isBlocked) return false;
+    const wa = user.Authorizations?.writeAccess ?? 0;
+    return post.OwnerId === user.Id && (user.isSuper || wa >= 2);
 }
 
 function canLikePost(user) {
@@ -94,8 +103,9 @@ function canLikePost(user) {
 }
 
 function canManageUsers(user) {
-    return user != null && user.isAdmin;
+    return user != null && user.isAdmin;         
 }
+
 
 /////////////////////////// Menu management ////////////////////////////////////////////////////////////
 
@@ -963,16 +973,20 @@ function renderDeleteAccountConfirm(user) {
         </div>
     `);
 
-    $('#confirmDeleteBtn').on("click", async function () {
-        let result = await Accounts_API.remove(user.Id);
-        if (result) {
-            noTimeout();
-            updateMenuForAnonymous();
-            await showPosts(true);
-        } else {
-            popupMessage("Erreur lors de la suppression du compte");
-        }
-    });
+$('#confirmDeleteBtn').on("click", async function () {
+    // IMPORTANT: faire le ménage AVANT remove(), car remove() efface le token :contentReference[oaicite:5]{index=5}
+    await purgeUserPostsAndLikes(user.Id);
+
+    let result = await Accounts_API.remove(user.Id);
+    if (result) {
+        noTimeout();
+        updateMenuForAnonymous();
+        await showPosts(true);
+    } else {
+        popupMessage("Erreur lors de la suppression du compte");
+    }
+});
+
 
     $('#cancelDeleteBtn').on("click", function () {
         renderModifyProfileForm();
@@ -1243,6 +1257,10 @@ async function renderDeletePostForm(id) {
     if (!Posts_API.error) {
         let post = response.data;
         if (post !== null) {
+
+            $('#commit').off('click');
+            $('#cancel').off('click');
+
             let date = convertToFrenchDate(UTC_To_Local(post.Date));
             $("#form").append(`
                 <div class="post" id="${post.Id}">
@@ -1256,7 +1274,7 @@ async function renderDeletePostForm(id) {
             `);
             linefeeds_to_Html_br(".postText");
             // attach form buttons click event callback
-            $('#commit').on("click", async function () {
+            $('#commit').one("click", async function () {
                 await Posts_API.Delete(post.Id);
                 if (!Posts_API.error) {
                     await showPosts();
@@ -1266,7 +1284,7 @@ async function renderDeletePostForm(id) {
                     showError(Posts_API.currentHttpError);
                 }
             });
-            $('#cancel').on("click", async function () {
+            $('#cancel').one("click", async function () {
                 await showPosts();
             });
 
@@ -1422,3 +1440,34 @@ async function renderError(message) {
         renderLoginForm();
     });
 }
+
+// --------------------- NEW --------------------
+async function purgeUserPostsAndLikes(userId) {
+    // 1) Likes faits par l'usager (sur n'importe quel post)
+    let userLikes = await PostLikes_API.GetQuery("?UserId=" + userId);
+    if (userLikes) {
+        for (const like of userLikes) {
+            await PostLikes_API.Delete(like.Id);
+        }
+    }
+
+    // 2) Posts de l'usager + likes sur ces posts
+    // (On redemande toujours offset=0 car on supprime au fur et à mesure)
+    while (true) {
+        let resp = await Posts_API.GetQuery(`?OwnerId=${userId}&limit=50&offset=0`);
+        if (!resp || !resp.data || resp.data.length === 0) break;
+
+        for (const post of resp.data) {
+            // Likes sur le post (par d'autres usagers aussi)
+            let postLikes = await PostLikes_API.getPostLikes(post.Id);
+            if (postLikes) {
+                for (const pl of postLikes) {
+                    await PostLikes_API.Delete(pl.Id);
+                }
+            }
+            // Supprimer le post
+            await Posts_API.Delete(post.Id);
+        }
+    }
+}
+
