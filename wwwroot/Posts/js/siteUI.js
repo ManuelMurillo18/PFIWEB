@@ -291,12 +291,12 @@ async function updateVisiblePosts() {
 }
 
 async function updatePost(postId) {
-    // ✅ IMPORTANT: guillemets sinon un id qui commence par un chiffre/contient des tirets peut bugger
+    
     const postElem = $(`.post[id="${postId}"]`);
 
     const response = await Posts_API.Get(postId);
 
-    // ✅ Si supprimé -> on retire du DOM et on arrête
+    
     if (Posts_API.error || !response) {
         if (Posts_API.currentStatus === 404) {
             postElem.remove();
